@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import AliasChoices, BaseModel, EmailStr, Field
 
 from app.models import LogoPositionMode, OutputType, Protocol, StreamStatus
 
@@ -12,7 +12,7 @@ class TokenResponse(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    username: str = Field(validation_alias=AliasChoices("username", "email"))
     password: str
 
 

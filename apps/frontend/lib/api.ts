@@ -8,6 +8,13 @@ export function getToken() {
 export function setToken(token: string) {
   if (typeof window === 'undefined') return;
   localStorage.setItem('rocks_stream_token', token);
+  document.cookie = `rocks_stream_token=${token}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`;
+}
+
+export function clearToken() {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem('rocks_stream_token');
+  document.cookie = 'rocks_stream_token=; Path=/; Max-Age=0; SameSite=Lax';
 }
 
 export async function apiFetch(path: string, init: RequestInit = {}) {
