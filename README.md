@@ -9,7 +9,7 @@ Rocks Stream is a Docker Compose based live streaming control plane inspired by 
 - Cache: Redis
 - Streaming engine: Python service that manages `gst-launch-1.0` pipelines
 - Proxy/edge: Nginx RTMP + HTTP + HLS static serving
-- TLS: Certbot webroot flow
+- TLS: static valid certificate files mounted into nginx
 
 ## Repository layout
 ```text
@@ -126,29 +126,20 @@ No AWS credentials are stored in the repo. Use your normal AWS CLI auth flow.
 ./scripts/deploy.sh
 ```
 
-### 4) Issue Let’s Encrypt certificate
-After DNS resolves to the host:
+### 4) Install the valid SSL certificate
+Place your existing valid certificate and key on the server at:
 ```bash
-docker compose run --rm certbot certonly \
-  --webroot -w /var/www/certbot \
-  -d keystream.rockstreamer.com \
-  --email you@example.com \
-  --agree-tos --no-eff-email
+mkdir -p ssl
+cp /path/to/fullchain.pem ssl/fullchain.pem
+cp /path/to/privkey.pem ssl/privkey.pem
+chmod 644 ssl/fullchain.pem
+chmod 600 ssl/privkey.pem
 ```
 
 ### 5) Enable TLS
-This repo ships HTTP-first Nginx to avoid boot failure before cert issuance. After certificates exist, replace the server block with an SSL-enabled one or extend `infra/nginx/nginx.conf` with:
-```nginx
-server {
-  listen 443 ssl http2;
-  server_name keystream.rockstreamer.com;
-  ssl_certificate /etc/letsencrypt/live/keystream.rockstreamer.com/fullchain.pem;
-  ssl_certificate_key /etc/letsencrypt/live/keystream.rockstreamer.com/privkey.pem;
-  # copy the same locations as the port 80 server
-}
-```
-Then restart nginx:
+This repo ships HTTP-first nginx to avoid boot failure before cert files exist. After `ssl/fullchain.pem` and `ssl/privkey.pem` are in place:
 ```bash
+./scripts/enable-ssl.sh
 docker compose restart nginx
 ```
 

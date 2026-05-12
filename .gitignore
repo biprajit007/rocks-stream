@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+ssl/
 node_modules/
 .next/
 .venv/
