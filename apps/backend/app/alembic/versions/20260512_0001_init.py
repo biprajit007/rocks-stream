@@ -1,6 +1,7 @@
 """initial schema"""
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 revision = '20260512_0001'
 down_revision = None
@@ -9,15 +10,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    protocol = sa.Enum('srt', 'rtmp', 'hls', name='protocol')
-    stream_status = sa.Enum('stopped', 'starting', 'running', 'error', 'degraded', name='streamstatus')
-    output_type = sa.Enum('srt', 'rtmp', 'hls', name='outputtype')
-    logo_mode = sa.Enum('corner', 'coordinates', name='logopositionmode')
+    protocol = postgresql.ENUM('srt', 'rtmp', 'hls', name='protocol', create_type=False)
+    stream_status = postgresql.ENUM('stopped', 'starting', 'running', 'error', 'degraded', name='streamstatus', create_type=False)
+    output_type = postgresql.ENUM('srt', 'rtmp', 'hls', name='outputtype', create_type=False)
+    logo_mode = postgresql.ENUM('corner', 'coordinates', name='logopositionmode', create_type=False)
     bind = op.get_bind()
-    protocol.create(bind, checkfirst=True)
-    stream_status.create(bind, checkfirst=True)
-    output_type.create(bind, checkfirst=True)
-    logo_mode.create(bind, checkfirst=True)
+    for enum_type in (protocol, stream_status, output_type, logo_mode):
+        enum_type.create(bind, checkfirst=True)
 
     op.create_table('users',
         sa.Column('id', sa.Integer(), primary_key=True),
