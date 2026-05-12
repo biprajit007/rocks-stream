@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+.venv/
+.tmp-pydeps/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+postgres_data/
+redis_data/
+var/
+coverage/
+.DS_Store
