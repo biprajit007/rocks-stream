@@ -14,4 +14,6 @@ postgres_data/
 redis_data/
 var/
 coverage/
+*.tsbuildinfo
+*.db
 .DS_Store

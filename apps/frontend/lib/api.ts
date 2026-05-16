@@ -25,7 +25,18 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers, cache: 'no-store' });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Request failed: ${response.status}`);
+    let message = text || `Request failed: ${response.status}`;
+    try {
+      const parsed = JSON.parse(text);
+      message = parsed.detail || parsed.message || text;
+    } catch {}
+
+    if (response.status === 401 && token && typeof window !== 'undefined' && !path.startsWith('/auth/login')) {
+      clearToken();
+      window.location.href = '/login';
+    }
+
+    throw new Error(message);
   }
   return response.headers.get('content-type')?.includes('application/json') ? response.json() : response.text();
 }

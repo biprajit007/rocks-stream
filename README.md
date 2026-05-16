@@ -1,6 +1,6 @@
 # Rocks Stream
 
-Rocks Stream is a Docker Compose based live streaming control plane inspired by Nimble Streamer. It uses **GStreamer**, not FFmpeg, for ingest, transcoding, ABR ladder generation, HLS packaging, logo overlay, and output publishing.
+Rocks Stream is a Docker Compose based live streaming control plane inspired by Nimble Streamer. It uses **GStreamer** for ingest, transcoding, ABR ladder generation, HLS packaging, logo overlay, and output publishing.
 
 ## Stack
 - Frontend: Next.js

@@ -5,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.db import Base, engine, SessionLocal
-from app.routers import auth, streams
+from app.routers import ads, auth, social, streams
+from app.services.main_stream import sync_main_stream_alias
 from app.services.seed import seed_admin
 
 app = FastAPI(title=settings.app_name)
@@ -27,6 +28,7 @@ def startup_event() -> None:
     db = SessionLocal()
     try:
         seed_admin(db)
+        sync_main_stream_alias(db)
     finally:
         db.close()
 
@@ -43,3 +45,5 @@ def api_health():
 
 app.include_router(auth.router, prefix=settings.api_v1_prefix)
 app.include_router(streams.router, prefix=settings.api_v1_prefix)
+app.include_router(ads.router, prefix=settings.api_v1_prefix)
+app.include_router(social.router, prefix=settings.api_v1_prefix)

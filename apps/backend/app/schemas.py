@@ -58,6 +58,7 @@ class OutputTargetBase(BaseModel):
     output_type: OutputType
     is_enabled: bool = True
     port: int | None = None
+    latency_ms: int | None = None
     path_suffix: str | None = None
 
 
@@ -68,6 +69,7 @@ class OutputTargetCreate(OutputTargetBase):
 class OutputTargetUpdate(BaseModel):
     is_enabled: bool | None = None
     port: int | None = None
+    latency_ms: int | None = None
     path_suffix: str | None = None
 
 
@@ -110,11 +112,14 @@ class StreamBase(BaseModel):
     description: str | None = None
     is_enabled: bool = True
     abr_enabled: bool = False
+    is_primary: bool = False
     logo_enabled: bool = False
     logo_position_mode: LogoPositionMode = LogoPositionMode.corner
     logo_corner: str = "top-right"
     logo_x: int = 20
     logo_y: int = 20
+    logo_width: int = 120
+    logo_height: int = 48
 
 
 class StreamCreate(StreamBase):
@@ -128,16 +133,20 @@ class StreamUpdate(BaseModel):
     description: str | None = None
     is_enabled: bool | None = None
     abr_enabled: bool | None = None
+    is_primary: bool | None = None
     logo_enabled: bool | None = None
     logo_position_mode: LogoPositionMode | None = None
     logo_corner: str | None = None
     logo_x: int | None = None
     logo_y: int | None = None
+    logo_width: int | None = None
+    logo_height: int | None = None
 
 
 class PlaybackUrls(BaseModel):
     hls: str | None = None
     master_hls: str | None = None
+    main_hls: str | None = None
     rtmp: str | None = None
     srt: str | None = None
 
@@ -187,3 +196,87 @@ class EngineCommandResponse(BaseModel):
     ok: bool
     message: str
     runtime: RuntimeStateOut | None = None
+
+
+class AdSlotConfig(BaseModel):
+    enabled: bool = False
+    tag_url: str = ""
+    offset: str = ""
+    duration: str = ""
+    skippable: bool = False
+
+
+class AdSettingsBase(BaseModel):
+    provider: str = "Revive Adserver (open source)"
+    enabled: bool = False
+    pre_roll: AdSlotConfig = Field(default_factory=AdSlotConfig)
+    mid_roll: AdSlotConfig = Field(default_factory=AdSlotConfig)
+    post_roll: AdSlotConfig = Field(default_factory=AdSlotConfig)
+    video_ad: AdSlotConfig = Field(default_factory=AdSlotConfig)
+    mid_roll_rules: list[str] = Field(default_factory=list)
+
+
+class AdSettingsUpdate(AdSettingsBase):
+    pass
+
+
+class AdSettingsOut(AdSettingsBase):
+    id: int
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PlayerAdConfigOut(BaseModel):
+    enabled: bool = False
+    provider: str = "Revive Adserver (open source)"
+    stream_key: str | None = None
+    pre_roll: AdSlotConfig | None = None
+    mid_roll: AdSlotConfig | None = None
+    post_roll: AdSlotConfig | None = None
+    video_ad: AdSlotConfig | None = None
+    mid_roll_rules: list[str] = Field(default_factory=list)
+    player_hints: dict[str, str] = Field(default_factory=dict)
+
+
+class SocialPlatformConfig(BaseModel):
+    enabled: bool = False
+    ingest_url: str = ""
+    stream_key: str = ""
+    notes: str = ""
+    video_path: str = ""
+    resolution: str = "1920x1080"
+    fps: int = 30
+    video_bitrate: str = "4000k"
+    audio_bitrate: str = "128k"
+    rotate_every_hours: int = 6
+    auto_rotation: bool = False
+    config_enabled: bool = True
+    extra_args: str = ""
+    live_id: str = "-"
+    post_id: str = "-"
+    pid: str = "-"
+    started: str = "-"
+    restarts: int = 0
+    last_error: str = "-"
+
+
+class SocialRestreamSettingsBase(BaseModel):
+    source_stream_id: int | None = None
+    facebook: SocialPlatformConfig = Field(default_factory=SocialPlatformConfig)
+    youtube: SocialPlatformConfig = Field(default_factory=SocialPlatformConfig)
+    tiktok: SocialPlatformConfig = Field(default_factory=SocialPlatformConfig)
+    twitch: SocialPlatformConfig = Field(default_factory=SocialPlatformConfig)
+
+
+class SocialRestreamSettingsUpdate(SocialRestreamSettingsBase):
+    pass
+
+
+class SocialRestreamSettingsOut(SocialRestreamSettingsBase):
+    id: int
+    updated_at: datetime
+    source_stream_name: str | None = None
+    source_stream_key: str | None = None
+
+    model_config = {"from_attributes": True}

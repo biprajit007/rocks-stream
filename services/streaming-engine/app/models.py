@@ -47,6 +47,8 @@ class Stream(Base):
     logo_corner: Mapped[str] = mapped_column(String(32))
     logo_x: Mapped[int] = mapped_column(Integer)
     logo_y: Mapped[int] = mapped_column(Integer)
+    logo_width: Mapped[int] = mapped_column(Integer)
+    logo_height: Mapped[int] = mapped_column(Integer)
 
     input_sources: Mapped[list["InputSource"]] = relationship("InputSource", primaryjoin="Stream.id==InputSource.stream_id", order_by="InputSource.priority")
     output_targets: Mapped[list["OutputTarget"]] = relationship("OutputTarget", primaryjoin="Stream.id==OutputTarget.stream_id")

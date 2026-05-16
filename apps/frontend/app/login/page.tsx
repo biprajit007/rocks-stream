@@ -6,13 +6,15 @@ import { apiFetch, setToken } from '../../lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState('rockstreamer');
+  const [username, setUsername] = useState('admin@rocks.stream');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   return (
     <div className="card" style={{ maxWidth: 420, margin: '40px auto' }}>
-      <h2>Admin login</h2>
+      <h2>Rockstream Transcode Portal</h2>
+      <p className="muted">Admin login</p>
+      <p className="muted">Use the seeded admin for now: <strong>admin@rocks.stream</strong></p>
       <div style={{ marginBottom: 12 }}>
         <label>Username</label>
         <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />

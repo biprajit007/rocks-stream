@@ -27,6 +27,7 @@ from app.schemas import (
     StreamUpdate,
 )
 from app.services.engine_client import post_engine
+from app.services.main_stream import sync_main_stream_alias
 from app.services.seed import DEFAULT_ABR_PROFILES
 from app.services.url_builder import build_playback_urls
 
@@ -62,6 +63,9 @@ def list_streams(db: Session = Depends(get_db), _: User = Depends(get_current_us
 
 @router.post("", response_model=StreamOut)
 def create_stream(payload: StreamCreate, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    if payload.is_primary:
+        db.query(Stream).update({Stream.is_primary: False})
+
     existing = db.query(Stream).filter(Stream.stream_key == payload.stream_key).first()
     if existing:
         raise HTTPException(status_code=409, detail="Stream key already exists")
@@ -72,11 +76,14 @@ def create_stream(payload: StreamCreate, db: Session = Depends(get_db), _: User 
         description=payload.description,
         is_enabled=payload.is_enabled,
         abr_enabled=payload.abr_enabled,
+        is_primary=payload.is_primary,
         logo_enabled=payload.logo_enabled,
         logo_position_mode=payload.logo_position_mode,
         logo_corner=payload.logo_corner,
         logo_x=payload.logo_x,
         logo_y=payload.logo_y,
+        logo_width=payload.logo_width,
+        logo_height=payload.logo_height,
     )
     db.add(stream)
     db.flush()
@@ -93,6 +100,7 @@ def create_stream(payload: StreamCreate, db: Session = Depends(get_db), _: User 
     db.add(StreamRuntimeState(stream_id=stream.id, engine_status="stopped", details={}))
     db.add(StreamLogEntry(stream_id=stream.id, level="info", message="Stream created"))
     db.commit()
+    sync_main_stream_alias(db)
     return _serialize_stream(_get_stream_or_404(db, stream.id))
 
 
@@ -104,11 +112,15 @@ def get_stream(stream_id: int, db: Session = Depends(get_db), _: User = Depends(
 @router.patch("/{stream_id}", response_model=StreamOut)
 def update_stream(stream_id: int, payload: StreamUpdate, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     stream = _get_stream_or_404(db, stream_id)
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    if updates.get("is_primary"):
+        db.query(Stream).update({Stream.is_primary: False})
+    for key, value in updates.items():
         setattr(stream, key, value)
     stream.updated_at = datetime.utcnow()
     db.add(StreamLogEntry(stream_id=stream.id, level="info", message="Stream updated"))
     db.commit()
+    sync_main_stream_alias(db)
     return _serialize_stream(_get_stream_or_404(db, stream_id))
 
 
@@ -117,7 +129,20 @@ def delete_stream(stream_id: int, db: Session = Depends(get_db), _: User = Depen
     stream = _get_stream_or_404(db, stream_id)
     db.delete(stream)
     db.commit()
+    sync_main_stream_alias(db)
     return {"ok": True}
+
+
+@router.post("/{stream_id}/go-live", response_model=StreamOut)
+def go_live(stream_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    stream = _get_stream_or_404(db, stream_id)
+    db.query(Stream).update({Stream.is_primary: False})
+    stream.is_primary = True
+    stream.updated_at = datetime.utcnow()
+    db.add(StreamLogEntry(stream_id=stream.id, level="info", message="Stream set as main live stream"))
+    db.commit()
+    sync_main_stream_alias(db)
+    return _serialize_stream(_get_stream_or_404(db, stream_id))
 
 
 @router.post("/{stream_id}/inputs", response_model=InputSourceOut)

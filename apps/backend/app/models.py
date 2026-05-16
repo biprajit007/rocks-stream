@@ -51,6 +51,7 @@ class Stream(Base):
     description: Mapped[str | None] = mapped_column(Text)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     abr_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[StreamStatus] = mapped_column(Enum(StreamStatus), default=StreamStatus.stopped)
     bitrate_kbps: Mapped[int | None] = mapped_column(Integer)
     resolution: Mapped[str | None] = mapped_column(String(64))
@@ -62,6 +63,8 @@ class Stream(Base):
     logo_corner: Mapped[str] = mapped_column(String(32), default="top-right")
     logo_x: Mapped[int] = mapped_column(Integer, default=20)
     logo_y: Mapped[int] = mapped_column(Integer, default=20)
+    logo_width: Mapped[int] = mapped_column(Integer, default=120)
+    logo_height: Mapped[int] = mapped_column(Integer, default=48)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -101,6 +104,7 @@ class OutputTarget(Base):
     output_type: Mapped[OutputType] = mapped_column(Enum(OutputType), nullable=False)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     port: Mapped[int | None] = mapped_column(Integer)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
     path_suffix: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -159,3 +163,31 @@ class StreamLogEntry(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     stream: Mapped[Stream] = relationship("Stream", back_populates="logs")
+
+
+class AdSettings(Base):
+    __tablename__ = "ad_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    provider: Mapped[str] = mapped_column(String(128), default="Revive Adserver (open source)")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    pre_roll: Mapped[dict] = mapped_column(JSON, default=dict)
+    mid_roll: Mapped[dict] = mapped_column(JSON, default=dict)
+    post_roll: Mapped[dict] = mapped_column(JSON, default=dict)
+    video_ad: Mapped[dict] = mapped_column(JSON, default=dict)
+    mid_roll_rules: Mapped[list] = mapped_column(JSON, default=list)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SocialRestreamSettings(Base):
+    __tablename__ = "social_restream_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    source_stream_id: Mapped[int | None] = mapped_column(ForeignKey("streams.id", ondelete="SET NULL"), nullable=True)
+    facebook: Mapped[dict] = mapped_column(JSON, default=dict)
+    youtube: Mapped[dict] = mapped_column(JSON, default=dict)
+    tiktok: Mapped[dict] = mapped_column(JSON, default=dict)
+    twitch: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    source_stream: Mapped[Stream | None] = relationship("Stream", foreign_keys=[source_stream_id])

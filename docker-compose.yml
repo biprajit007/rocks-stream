@@ -108,6 +108,7 @@ services:
       - "1935:1935"
     volumes:
       - hls_data:/var/lib/rocks-stream/hls
+      - ./certbot-www:/var/www/certbot
       - ./ssl:/etc/ssl/rocks-stream:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]

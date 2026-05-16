@@ -13,12 +13,11 @@ export $(grep -v '^#' .env | xargs)
 
 docker compose pull --ignore-pull-failures || true
 docker compose build --pull
-docker compose up -d postgres redis backend streaming-engine frontend nginx certbot
+docker compose up -d postgres redis backend streaming-engine frontend nginx
 
 echo "Waiting for core services..."
 sleep 10
 
 docker compose ps
 
-echo "If DNS is already pointed at this host, request TLS with:"
-echo "docker compose run --rm certbot certonly --webroot -w /var/www/certbot -d ${PUBLIC_DOMAIN} --email ${LETSENCRYPT_EMAIL} --agree-tos --no-eff-email"
+echo "Deployment finished. If this host already has valid certs in ./ssl, run ./scripts/enable-ssl.sh to switch nginx to HTTPS mode."
