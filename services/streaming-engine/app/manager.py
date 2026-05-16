@@ -75,21 +75,31 @@ class PipelineManager:
             "-i", source_url,
             "-map", "0:v:0",
             "-map", "0:a:0?",
-            "-vf", f"scale={width}:{height}",
-            "-r", str(max(1, int(fps))),
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-tune", "zerolatency",
-            "-pix_fmt", "yuv420p",
-            "-b:v", video_bitrate,
-            "-maxrate", video_bitrate,
-            "-bufsize", f"{max(2, self._parse_bitrate(video_bitrate, 4000) * 2)}k",
-            "-g", str(max(1, int(fps) * 2)),
-            "-c:a", "aac",
-            "-b:a", audio_bitrate,
-            "-ar", "48000",
-            "-ac", "2",
         ]
+
+        if protocol == 'rtmp':
+            cmd.extend([
+                "-c:v", "copy",
+                "-c:a", "copy",
+            ])
+        else:
+            cmd.extend([
+                "-vf", f"scale={width}:{height}:flags=fast_bilinear",
+                "-r", str(max(1, int(fps))),
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-tune", "zerolatency",
+                "-pix_fmt", "yuv420p",
+                "-b:v", video_bitrate,
+                "-maxrate", video_bitrate,
+                "-bufsize", f"{max(2, self._parse_bitrate(video_bitrate, 4000) * 2)}k",
+                "-g", str(max(1, int(fps) * 2)),
+                "-c:a", "aac",
+                "-b:a", audio_bitrate,
+                "-ar", "48000",
+                "-ac", "2",
+            ])
+
         if extra_args.strip():
             cmd.extend(shlex.split(extra_args.strip()))
         cmd.extend([
