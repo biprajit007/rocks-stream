@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db
-from app.models import OutputType, SocialRestreamSettings, Stream, User
+from app.models import InputSource, OutputType, SocialRestreamSettings, Stream, User
 from app.schemas import SocialRestreamSettingsOut, SocialRestreamSettingsUpdate
 from app.services.engine_client import post_engine
 from app.services.url_builder import build_playback_urls
@@ -78,19 +78,34 @@ def _platform_attr(platform: str) -> str:
     return mapping[platform]
 
 
-def _source_url(stream: Stream) -> str | None:
+def _select_source_input(stream: Stream) -> InputSource | None:
+    if stream.active_input_id:
+        for item in stream.input_sources:
+            if item.id == stream.active_input_id and item.is_enabled:
+                return item
+    enabled_inputs = [item for item in stream.input_sources if item.is_enabled]
+    if not enabled_inputs:
+        return None
+    return sorted(enabled_inputs, key=lambda item: item.priority)[0]
+
+
+def _source_details(stream: Stream) -> tuple[str | None, str | None]:
+    source_input = _select_source_input(stream)
+    if source_input:
+        return source_input.source_url, source_input.protocol.value
+
     rtmp_output = next((item for item in stream.output_targets if item.is_enabled and item.output_type == OutputType.rtmp), None)
     if rtmp_output:
         path_suffix = rtmp_output.path_suffix or stream.stream_key
-        return f"rtmp://nginx:1935/live/{path_suffix}"
+        return f"rtmp://nginx:1935/live/{path_suffix}", OutputType.rtmp.value
 
     hls_output = next((item for item in stream.output_targets if item.is_enabled and item.output_type == OutputType.hls), None)
     if hls_output:
         playlist_key = "main" if getattr(stream, "is_primary", False) else stream.stream_key
-        return f"http://nginx/live/{playlist_key}/index.m3u8"
+        return f"http://nginx/live/{playlist_key}/index.m3u8", OutputType.hls.value
 
     urls = build_playback_urls(stream)
-    return urls.rtmp or urls.main_hls or urls.master_hls or urls.hls or urls.srt
+    return urls.rtmp or urls.main_hls or urls.master_hls or urls.hls or urls.srt, None
 
 
 def _valid_stream_key(value: str | None) -> bool:
@@ -150,9 +165,9 @@ async def start_social_platform(platform: str, db: Session = Depends(get_db), _:
     stream = db.query(Stream).filter(Stream.id == settings.source_stream_id).first()
     if not stream:
         raise HTTPException(status_code=404, detail='Source stream not found')
-    source_url = _source_url(stream)
+    source_url, source_protocol = _source_details(stream)
     if not source_url:
-        raise HTTPException(status_code=400, detail='Source stream needs an enabled RTMP or HLS output before social restream can start')
+        raise HTTPException(status_code=400, detail='Source stream needs a working enabled input or output before social restream can start')
     if not config.get('ingest_url') or not _valid_stream_key(config.get('stream_key')):
         raise HTTPException(status_code=400, detail='Platform ingest URL and stream key are required')
 
@@ -161,13 +176,14 @@ async def start_social_platform(platform: str, db: Session = Depends(get_db), _:
             await post_engine(f'/engine/streams/{stream.id}/start', {'stream_id': stream.id, 'action': 'start'})
             db.expire_all()
             stream = db.query(Stream).filter(Stream.id == settings.source_stream_id).first()
-            source_url = _source_url(stream) if stream else None
+            source_url, source_protocol = _source_details(stream) if stream else (None, None)
             if not source_url:
-                raise HTTPException(status_code=400, detail='Source stream could not expose a playable output after startup')
+                raise HTTPException(status_code=400, detail='Source stream could not expose a playable source after startup')
 
         result = await post_engine(f'/engine/social/{attr}/start', {
             'source_stream_id': stream.id,
             'source_url': source_url,
+            'source_protocol': source_protocol,
             'ingest_url': config.get('ingest_url'),
             'stream_key': config.get('stream_key'),
             'resolution': config.get('resolution', '1920x1080'),
@@ -233,9 +249,9 @@ async def restart_social_platform(platform: str, db: Session = Depends(get_db), 
     stream = db.query(Stream).filter(Stream.id == settings.source_stream_id).first()
     if not stream:
         raise HTTPException(status_code=404, detail='Source stream not found')
-    source_url = _source_url(stream)
+    source_url, source_protocol = _source_details(stream)
     if not source_url:
-        raise HTTPException(status_code=400, detail='Source stream needs an enabled RTMP or HLS output before social restream can restart')
+        raise HTTPException(status_code=400, detail='Source stream needs a working enabled input or output before social restream can restart')
     if not config.get('ingest_url') or not _valid_stream_key(config.get('stream_key')):
         raise HTTPException(status_code=400, detail='Platform ingest URL and stream key are required')
 
@@ -244,13 +260,14 @@ async def restart_social_platform(platform: str, db: Session = Depends(get_db), 
             await post_engine(f'/engine/streams/{stream.id}/start', {'stream_id': stream.id, 'action': 'start'})
             db.expire_all()
             stream = db.query(Stream).filter(Stream.id == settings.source_stream_id).first()
-            source_url = _source_url(stream) if stream else None
+            source_url, source_protocol = _source_details(stream) if stream else (None, None)
             if not source_url:
-                raise HTTPException(status_code=400, detail='Source stream could not expose a playable output after startup')
+                raise HTTPException(status_code=400, detail='Source stream could not expose a playable source after startup')
 
         result = await post_engine(f'/engine/social/{attr}/restart', {
             'source_stream_id': stream.id,
             'source_url': source_url,
+            'source_protocol': source_protocol,
             'ingest_url': config.get('ingest_url'),
             'stream_key': config.get('stream_key'),
             'resolution': config.get('resolution', '1920x1080'),

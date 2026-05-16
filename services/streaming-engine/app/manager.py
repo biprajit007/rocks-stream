@@ -47,17 +47,25 @@ class PipelineManager:
         except Exception:
             return 1920, 1080
 
-    def _build_social_pipeline(self, source_url: str, ingest_url: str, stream_key: str, resolution: str, fps: int, video_bitrate: str, audio_bitrate: str, extra_args: str = '') -> str:
+    def _build_social_source_chain(self, source_url: str, source_protocol: str | None) -> str:
+        protocol = (source_protocol or '').lower()
+        if protocol == 'rtmp':
+            return f'rtmpsrc location={shlex.quote(source_url)} ! queue ! flvdemux name=demux demux. ! queue ! decodebin name=dec'
+        if protocol == 'srt':
+            return f'srtsrc uri={shlex.quote(source_url)} ! tsdemux name=demux demux. ! queue ! decodebin name=dec'
+        return f'uridecodebin uri={shlex.quote(source_url)} expose-all-streams=false name=dec'
+
+    def _build_social_pipeline(self, source_url: str, source_protocol: str | None, ingest_url: str, stream_key: str, resolution: str, fps: int, video_bitrate: str, audio_bitrate: str, extra_args: str = '') -> str:
         width, height = self._parse_resolution(resolution)
         vbr = self._parse_bitrate(video_bitrate, 4000)
         abr = self._parse_bitrate(audio_bitrate, 128)
         target = f"{ingest_url}{stream_key}"
         extras = f" {extra_args.strip()}" if extra_args.strip() else ''
-        uri = shlex.quote(source_url)
         location = shlex.quote(target)
+        source_chain = self._build_social_source_chain(source_url, source_protocol)
         return (
             "gst-launch-1.0 -e "
-            f"uridecodebin uri={uri} name=dec "
+            f"{source_chain} "
             "dec. ! queue ! videoconvert ! videorate ! videoscale ! "
             f"video/x-raw,width={width},height={height} "
             f"! x264enc tune=zerolatency speed-preset=veryfast bitrate={vbr} key-int-max={max(1, int(fps) * 2)} ! h264parse ! mux.video "
@@ -158,7 +166,7 @@ class PipelineManager:
         self.stop(stream_id)
         return self.start(stream_id)
 
-    def start_social(self, platform: str, source_stream_id: int, source_url: str, ingest_url: str, stream_key: str, resolution: str, fps: int, video_bitrate: str, audio_bitrate: str, extra_args: str = '') -> dict:
+    def start_social(self, platform: str, source_stream_id: int, source_url: str, source_protocol: str | None, ingest_url: str, stream_key: str, resolution: str, fps: int, video_bitrate: str, audio_bitrate: str, extra_args: str = '') -> dict:
         with self.lock:
             db = self._db()
             proc = None
@@ -166,7 +174,7 @@ class PipelineManager:
                 key = self._key('social', platform)
                 if key in self.processes and self.processes[key].poll() is None:
                     return {"message": f"{platform} already running", "process_id": self.processes[key].pid}
-                cmd = self._build_social_pipeline(source_url, ingest_url, stream_key, resolution, fps, video_bitrate, audio_bitrate, extra_args)
+                cmd = self._build_social_pipeline(source_url, source_protocol, ingest_url, stream_key, resolution, fps, video_bitrate, audio_bitrate, extra_args)
                 logfile = os.path.join(settings.logs_root, f"social-{platform}.log")
                 os.makedirs(settings.logs_root, exist_ok=True)
                 handle = open(logfile, 'ab')
@@ -208,9 +216,9 @@ class PipelineManager:
             finally:
                 db.close()
 
-    def restart_social(self, platform: str, source_stream_id: int, source_url: str, ingest_url: str, stream_key: str, resolution: str, fps: int, video_bitrate: str, audio_bitrate: str, extra_args: str = '') -> dict:
+    def restart_social(self, platform: str, source_stream_id: int, source_url: str, source_protocol: str | None, ingest_url: str, stream_key: str, resolution: str, fps: int, video_bitrate: str, audio_bitrate: str, extra_args: str = '') -> dict:
         self.stop_social(platform, source_stream_id)
-        return self.start_social(platform, source_stream_id, source_url, ingest_url, stream_key, resolution, fps, video_bitrate, audio_bitrate, extra_args)
+        return self.start_social(platform, source_stream_id, source_url, source_protocol, ingest_url, stream_key, resolution, fps, video_bitrate, audio_bitrate, extra_args)
 
     def health(self) -> dict:
         states = {}
