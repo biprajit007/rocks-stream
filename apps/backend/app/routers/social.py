@@ -90,14 +90,14 @@ def _select_source_input(stream: Stream) -> InputSource | None:
 
 
 def _source_details(stream: Stream) -> tuple[str | None, str | None]:
-    source_input = _select_source_input(stream)
-    if source_input:
-        return source_input.source_url, source_input.protocol.value
-
     rtmp_output = next((item for item in stream.output_targets if item.is_enabled and item.output_type == OutputType.rtmp), None)
     if rtmp_output:
         path_suffix = rtmp_output.path_suffix or stream.stream_key
         return f"rtmp://nginx:1935/live/{path_suffix}", OutputType.rtmp.value
+
+    source_input = _select_source_input(stream)
+    if source_input:
+        return source_input.source_url, source_input.protocol.value
 
     hls_output = next((item for item in stream.output_targets if item.is_enabled and item.output_type == OutputType.hls), None)
     if hls_output:

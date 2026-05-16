@@ -19,6 +19,8 @@ def _input_chain(source: InputSource) -> str:
         return f'rtmpsrc location={shlex.quote(source.source_url)} ! queue ! flvdemux name=demux demux. ! queue ! decodebin name=dec'
     if source.protocol.value == "srt":
         return f'srtsrc uri={shlex.quote(source.source_url)} ! tsdemux name=demux demux. ! queue ! decodebin name=dec'
+    if source.protocol.value == "hls":
+        return f'souphttpsrc is-live=true do-timestamp=true location={shlex.quote(source.source_url)} ! queue2 use-buffering=true max-size-time=0 max-size-bytes=0 max-size-buffers=0 ! hlsdemux ! decodebin name=dec'
     return f'uridecodebin uri={shlex.quote(source.source_url)} expose-all-streams=false name=dec'
 
 
@@ -112,14 +114,24 @@ def build_pipeline(stream: Stream, logo: LogoAsset | None) -> PipelineSpec:
         ])
 
     video_filter = _overlay_filter(stream, logo)
-    command = "gst-launch-1.0 -e " + " ".join([
-        _input_chain(source),
-        'dec. ! queue ! videoconvert !',
-        video_filter,
-        '! tee name=vt',
-        'dec. ! queue ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! tee name=at',
-        *branches,
-    ])
+    if source.protocol.value == 'hls':
+        command = "gst-launch-1.0 -e " + " ".join([
+            f'souphttpsrc is-live=true do-timestamp=true location={shlex.quote(source.source_url)} ! queue2 use-buffering=true max-size-time=0 max-size-bytes=0 max-size-buffers=0 ! hlsdemux ! tsdemux name=demux',
+            'demux. ! queue ! h264parse ! avdec_h264 ! videoconvert !',
+            video_filter,
+            '! tee name=vt',
+            'demux. ! queue ! aacparse ! avdec_aac ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! tee name=at',
+            *branches,
+        ])
+    else:
+        command = "gst-launch-1.0 -e " + " ".join([
+            _input_chain(source),
+            'dec. ! queue ! capsfilter caps=video/x-raw ! videoconvert !',
+            video_filter,
+            '! tee name=vt',
+            'dec. ! queue ! capsfilter caps=audio/x-raw ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! tee name=at',
+            *branches,
+        ])
     return PipelineSpec(command=command, active_input_id=source.id, preview_url=preview_url, details=details)
 
 

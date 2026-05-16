@@ -47,32 +47,56 @@ class PipelineManager:
         except Exception:
             return 1920, 1080
 
-    def _build_social_source_chain(self, source_url: str, source_protocol: str | None) -> str:
-        protocol = (source_protocol or '').lower()
-        if protocol == 'rtmp':
-            return f'rtmpsrc location={shlex.quote(source_url)} ! queue ! flvdemux name=demux demux. ! queue ! decodebin name=dec'
-        if protocol == 'srt':
-            return f'srtsrc uri={shlex.quote(source_url)} ! tsdemux name=demux demux. ! queue ! decodebin name=dec'
-        return f'uridecodebin uri={shlex.quote(source_url)} expose-all-streams=false name=dec'
-
     def _build_social_pipeline(self, source_url: str, source_protocol: str | None, ingest_url: str, stream_key: str, resolution: str, fps: int, video_bitrate: str, audio_bitrate: str, extra_args: str = '') -> str:
         width, height = self._parse_resolution(resolution)
-        vbr = self._parse_bitrate(video_bitrate, 4000)
-        abr = self._parse_bitrate(audio_bitrate, 128)
         target = f"{ingest_url}{stream_key}"
-        extras = f" {extra_args.strip()}" if extra_args.strip() else ''
-        location = shlex.quote(target)
-        source_chain = self._build_social_source_chain(source_url, source_protocol)
-        return (
-            "gst-launch-1.0 -e "
-            f"{source_chain} "
-            "dec. ! queue ! videoconvert ! videorate ! videoscale ! "
-            f"video/x-raw,width={width},height={height} "
-            f"! x264enc tune=zerolatency speed-preset=veryfast bitrate={vbr} key-int-max={max(1, int(fps) * 2)} ! h264parse ! mux.video "
-            "dec. ! queue ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 "
-            f"! voaacenc bitrate={abr * 1000} ! aacparse ! mux.audio "
-            f"flvmux name=mux streamable=true ! rtmpsink location={location}{extras}"
-        )
+        protocol = (source_protocol or '').lower()
+
+        input_args: list[str] = ["-fflags", "+genpts"]
+        if protocol == 'hls':
+            input_args += [
+                "-reconnect", "1",
+                "-reconnect_streamed", "1",
+                "-reconnect_on_network_error", "1",
+                "-reconnect_delay_max", "2",
+                "-thread_queue_size", "4096",
+            ]
+        elif protocol == 'rtmp':
+            input_args += ["-thread_queue_size", "4096"]
+        elif protocol == 'srt':
+            input_args += ["-thread_queue_size", "4096"]
+
+        cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel", "info",
+            "-y",
+            *input_args,
+            "-i", source_url,
+            "-map", "0:v:0",
+            "-map", "0:a:0?",
+            "-vf", f"scale={width}:{height}",
+            "-r", str(max(1, int(fps))),
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-tune", "zerolatency",
+            "-pix_fmt", "yuv420p",
+            "-b:v", video_bitrate,
+            "-maxrate", video_bitrate,
+            "-bufsize", f"{max(2, self._parse_bitrate(video_bitrate, 4000) * 2)}k",
+            "-g", str(max(1, int(fps) * 2)),
+            "-c:a", "aac",
+            "-b:a", audio_bitrate,
+            "-ar", "48000",
+            "-ac", "2",
+        ]
+        if extra_args.strip():
+            cmd.extend(shlex.split(extra_args.strip()))
+        cmd.extend([
+            "-f", "flv",
+            target,
+        ])
+        return " ".join(shlex.quote(part) for part in cmd)
 
     def _runtime(self, db: Session, stream_id: int) -> StreamRuntimeState:
         runtime = db.query(StreamRuntimeState).filter(StreamRuntimeState.stream_id == stream_id).first()
