@@ -184,6 +184,7 @@ class SocialRestreamSettings(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     source_stream_id: Mapped[int | None] = mapped_column(ForeignKey("streams.id", ondelete="SET NULL"), nullable=True)
+    source_input_id: Mapped[int | None] = mapped_column(ForeignKey("input_sources.id", ondelete="SET NULL"), nullable=True)
     facebook: Mapped[dict] = mapped_column(JSON, default=dict)
     youtube: Mapped[dict] = mapped_column(JSON, default=dict)
     tiktok: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -191,3 +192,4 @@ class SocialRestreamSettings(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     source_stream: Mapped[Stream | None] = relationship("Stream", foreign_keys=[source_stream_id])
+    source_input: Mapped[InputSource | None] = relationship("InputSource", foreign_keys=[source_input_id])

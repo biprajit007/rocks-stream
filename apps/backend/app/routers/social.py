@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db
@@ -40,11 +41,17 @@ def _default_settings() -> SocialRestreamSettings:
     return SocialRestreamSettings(
         id=1,
         source_stream_id=None,
+        source_input_id=None,
         facebook=_default_platform("Facebook", "rtmps://live-api-s.facebook.com:443/rtmp/"),
         youtube=_default_platform("YouTube", "rtmp://a.rtmp.youtube.com/live2/"),
         tiktok=_default_platform("TikTok", "rtmps://live.tiktok.com:443/stream/"),
         twitch=_default_platform("Twitch", "rtmp://live.twitch.tv/app/"),
     )
+
+
+def _ensure_schema(db: Session) -> None:
+    db.execute(text("ALTER TABLE social_restream_settings ADD COLUMN IF NOT EXISTS source_input_id INTEGER"))
+    db.commit()
 
 
 def _get_or_create(db: Session) -> SocialRestreamSettings:
@@ -63,6 +70,9 @@ def _serialize(settings: SocialRestreamSettings) -> SocialRestreamSettingsOut:
     if settings.source_stream:
         payload.source_stream_name = settings.source_stream.name
         payload.source_stream_key = settings.source_stream.stream_key
+    if settings.source_input:
+        payload.source_input_name = settings.source_input.name
+        payload.source_input_url = settings.source_input.source_url
     return payload
 
 
@@ -78,7 +88,11 @@ def _platform_attr(platform: str) -> str:
     return mapping[platform]
 
 
-def _select_source_input(stream: Stream) -> InputSource | None:
+def _select_source_input(stream: Stream, preferred_input_id: int | None = None) -> InputSource | None:
+    if preferred_input_id:
+        for item in stream.input_sources:
+            if item.id == preferred_input_id and item.is_enabled:
+                return item
     if stream.active_input_id:
         for item in stream.input_sources:
             if item.id == stream.active_input_id and item.is_enabled:
@@ -89,7 +103,12 @@ def _select_source_input(stream: Stream) -> InputSource | None:
     return sorted(enabled_inputs, key=lambda item: item.priority)[0]
 
 
-def _source_details(stream: Stream) -> tuple[str | None, str | None]:
+def _source_details(stream: Stream, preferred_input_id: int | None = None) -> tuple[str | None, str | None]:
+    if preferred_input_id:
+        source_input = _select_source_input(stream, preferred_input_id)
+        if source_input:
+            return source_input.source_url, source_input.protocol.value
+
     rtmp_output = next((item for item in stream.output_targets if item.is_enabled and item.output_type == OutputType.rtmp), None)
     if rtmp_output:
         path_suffix = rtmp_output.path_suffix or stream.stream_key
@@ -131,12 +150,15 @@ def _set_platform_error(settings_obj: SocialRestreamSettings, attr: str, message
 
 @router.get("", response_model=SocialRestreamSettingsOut)
 def get_social_settings(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    _ensure_schema(db)
     return _serialize(_get_or_create(db))
 
 
 @router.put("", response_model=SocialRestreamSettingsOut)
 def update_social_settings(payload: SocialRestreamSettingsUpdate, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    _ensure_schema(db)
     settings = _get_or_create(db)
+    stream = None
     if payload.source_stream_id is not None:
         stream = db.query(Stream).filter(Stream.id == payload.source_stream_id).first()
         if not stream:
@@ -144,6 +166,19 @@ def update_social_settings(payload: SocialRestreamSettingsUpdate, db: Session = 
         settings.source_stream_id = stream.id
     else:
         settings.source_stream_id = None
+        settings.source_input_id = None
+
+    if payload.source_input_id is not None:
+        if not stream:
+            stream = db.query(Stream).filter(Stream.id == settings.source_stream_id).first() if settings.source_stream_id else None
+        if not stream:
+            raise HTTPException(status_code=400, detail="Select a source stream first")
+        selected_input = next((item for item in stream.input_sources if item.id == payload.source_input_id), None)
+        if not selected_input:
+            raise HTTPException(status_code=404, detail="Source input not found for selected stream")
+        settings.source_input_id = selected_input.id
+    else:
+        settings.source_input_id = None
 
     settings.facebook = payload.facebook.model_dump()
     settings.youtube = payload.youtube.model_dump()
@@ -157,6 +192,7 @@ def update_social_settings(payload: SocialRestreamSettingsUpdate, db: Session = 
 
 @router.post('/{platform}/start', response_model=SocialRestreamSettingsOut)
 async def start_social_platform(platform: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    _ensure_schema(db)
     settings = _get_or_create(db)
     attr = _platform_attr(platform)
     config = dict(getattr(settings, attr) or {})
@@ -165,7 +201,7 @@ async def start_social_platform(platform: str, db: Session = Depends(get_db), _:
     stream = db.query(Stream).filter(Stream.id == settings.source_stream_id).first()
     if not stream:
         raise HTTPException(status_code=404, detail='Source stream not found')
-    source_url, source_protocol = _source_details(stream)
+    source_url, source_protocol = _source_details(stream, settings.source_input_id)
     if not source_url:
         raise HTTPException(status_code=400, detail='Source stream needs a working enabled input or output before social restream can start')
     if not config.get('ingest_url') or not _valid_stream_key(config.get('stream_key')):
@@ -176,7 +212,7 @@ async def start_social_platform(platform: str, db: Session = Depends(get_db), _:
             await post_engine(f'/engine/streams/{stream.id}/start', {'stream_id': stream.id, 'action': 'start'})
             db.expire_all()
             stream = db.query(Stream).filter(Stream.id == settings.source_stream_id).first()
-            source_url, source_protocol = _source_details(stream) if stream else (None, None)
+            source_url, source_protocol = _source_details(stream, settings.source_input_id) if stream else (None, None)
             if not source_url:
                 raise HTTPException(status_code=400, detail='Source stream could not expose a playable source after startup')
 
@@ -216,6 +252,7 @@ async def start_social_platform(platform: str, db: Session = Depends(get_db), _:
 
 @router.post('/{platform}/stop', response_model=SocialRestreamSettingsOut)
 async def stop_social_platform(platform: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    _ensure_schema(db)
     settings = _get_or_create(db)
     attr = _platform_attr(platform)
     config = dict(getattr(settings, attr) or {})
@@ -241,6 +278,7 @@ async def stop_social_platform(platform: str, db: Session = Depends(get_db), _: 
 
 @router.post('/{platform}/restart', response_model=SocialRestreamSettingsOut)
 async def restart_social_platform(platform: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    _ensure_schema(db)
     settings = _get_or_create(db)
     attr = _platform_attr(platform)
     config = dict(getattr(settings, attr) or {})
@@ -249,7 +287,7 @@ async def restart_social_platform(platform: str, db: Session = Depends(get_db), 
     stream = db.query(Stream).filter(Stream.id == settings.source_stream_id).first()
     if not stream:
         raise HTTPException(status_code=404, detail='Source stream not found')
-    source_url, source_protocol = _source_details(stream)
+    source_url, source_protocol = _source_details(stream, settings.source_input_id)
     if not source_url:
         raise HTTPException(status_code=400, detail='Source stream needs a working enabled input or output before social restream can restart')
     if not config.get('ingest_url') or not _valid_stream_key(config.get('stream_key')):
@@ -260,7 +298,7 @@ async def restart_social_platform(platform: str, db: Session = Depends(get_db), 
             await post_engine(f'/engine/streams/{stream.id}/start', {'stream_id': stream.id, 'action': 'start'})
             db.expire_all()
             stream = db.query(Stream).filter(Stream.id == settings.source_stream_id).first()
-            source_url, source_protocol = _source_details(stream) if stream else (None, None)
+            source_url, source_protocol = _source_details(stream, settings.source_input_id) if stream else (None, None)
             if not source_url:
                 raise HTTPException(status_code=400, detail='Source stream could not expose a playable source after startup')
 

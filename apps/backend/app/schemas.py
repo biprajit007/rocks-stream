@@ -263,6 +263,7 @@ class SocialPlatformConfig(BaseModel):
 
 class SocialRestreamSettingsBase(BaseModel):
     source_stream_id: int | None = None
+    source_input_id: int | None = None
     facebook: SocialPlatformConfig = Field(default_factory=SocialPlatformConfig)
     youtube: SocialPlatformConfig = Field(default_factory=SocialPlatformConfig)
     tiktok: SocialPlatformConfig = Field(default_factory=SocialPlatformConfig)
@@ -278,5 +279,7 @@ class SocialRestreamSettingsOut(SocialRestreamSettingsBase):
     updated_at: datetime
     source_stream_name: str | None = None
     source_stream_key: str | None = None
+    source_input_name: str | None = None
+    source_input_url: str | None = None
 
     model_config = {"from_attributes": True}

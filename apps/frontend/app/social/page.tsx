@@ -3,12 +3,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../lib/api';
 
+type InputSource = {
+  id: number;
+  name: string;
+  protocol: string;
+  source_url: string;
+  priority: number;
+  is_enabled: boolean;
+};
+
 type Stream = {
   id: number;
   name: string;
   stream_key: string;
   status: string;
   is_primary?: boolean;
+  input_sources: InputSource[];
   playback_urls: { main_hls?: string | null; hls?: string | null; master_hls?: string | null; rtmp?: string | null; srt?: string | null };
 };
 
@@ -115,6 +125,7 @@ function createPlatformFromPreset(
 export default function SocialStreamPage() {
   const [streams, setStreams] = useState<Stream[]>([]);
   const [selectedStreamId, setSelectedStreamId] = useState<number | null>(null);
+  const [selectedInputId, setSelectedInputId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
@@ -128,6 +139,7 @@ export default function SocialStreamPage() {
         const [list, social] = await Promise.all([apiFetch('/streams'), apiFetch('/social')]);
         setStreams(list);
         setSelectedStreamId((current) => current ?? social.source_stream_id ?? list[0]?.id ?? null);
+        setSelectedInputId((current) => current ?? social.source_input_id ?? null);
         setPlatforms([
           createPlatformFromPreset(platformPresets[0], social.youtube),
           createPlatformFromPreset(platformPresets[1], social.facebook),
@@ -146,7 +158,25 @@ export default function SocialStreamPage() {
     [streams, selectedStreamId]
   );
 
-  const sourceUrl = selectedStream?.playback_urls.main_hls || selectedStream?.playback_urls.master_hls || selectedStream?.playback_urls.hls || '';
+  const availableInputs = useMemo(() => selectedStream?.input_sources?.filter((item) => item.is_enabled) || [], [selectedStream]);
+
+  const selectedInput = useMemo(
+    () => availableInputs.find((item) => item.id === selectedInputId) || null,
+    [availableInputs, selectedInputId]
+  );
+
+  useEffect(() => {
+    if (!selectedStream) {
+      setSelectedInputId(null);
+      return;
+    }
+    if (selectedInputId && availableInputs.some((item) => item.id === selectedInputId)) {
+      return;
+    }
+    setSelectedInputId(availableInputs[0]?.id ?? null);
+  }, [availableInputs, selectedInputId, selectedStream]);
+
+  const sourceUrl = selectedInput?.source_url || selectedStream?.playback_urls.main_hls || selectedStream?.playback_urls.master_hls || selectedStream?.playback_urls.hls || '';
 
   function patchPlatform(name: Platform['name'], patch: Partial<Platform>) {
     setPlatforms((current) => current.map((platform) => (platform.name === name ? { ...platform, ...patch } : platform)));
@@ -160,6 +190,7 @@ export default function SocialStreamPage() {
     const [list, social] = await Promise.all([apiFetch('/streams'), apiFetch('/social')]);
     setStreams(list);
     setSelectedStreamId((current) => current ?? social.source_stream_id ?? list[0]?.id ?? null);
+    setSelectedInputId((current) => current ?? social.source_input_id ?? null);
     setPlatforms([
       createPlatformFromPreset(platformPresets[0], social.youtube),
       createPlatformFromPreset(platformPresets[1], social.facebook),
@@ -168,7 +199,7 @@ export default function SocialStreamPage() {
     ]);
   }
 
-  function buildPayload(nextPlatforms = platforms, nextSelectedStreamId = selectedStreamId) {
+  function buildPayload(nextPlatforms = platforms, nextSelectedStreamId = selectedStreamId, nextSelectedInputId = selectedInputId) {
       const toConfig = (platform: Platform) => ({
         enabled: platform.enabled,
         ingest_url: platform.ingestUrl,
@@ -190,6 +221,7 @@ export default function SocialStreamPage() {
 
     return {
       source_stream_id: nextSelectedStreamId,
+      source_input_id: nextSelectedInputId,
       youtube: toConfig(nextPlatforms[0]),
       facebook: toConfig(nextPlatforms[1]),
       tiktok: toConfig(nextPlatforms[2]),
@@ -197,13 +229,19 @@ export default function SocialStreamPage() {
     };
   }
 
-  async function persistSocialSettings(nextPlatforms = platforms, nextSelectedStreamId = selectedStreamId, successMessage = 'Social restream settings saved') {
+  async function persistSocialSettings(
+    nextPlatforms = platforms,
+    nextSelectedStreamId = selectedStreamId,
+    nextSelectedInputId = selectedInputId,
+    successMessage = 'Social restream settings saved'
+  ) {
     await apiFetch('/social', {
       method: 'PUT',
-      body: JSON.stringify(buildPayload(nextPlatforms, nextSelectedStreamId)),
+      body: JSON.stringify(buildPayload(nextPlatforms, nextSelectedStreamId, nextSelectedInputId)),
     });
     setPlatforms(nextPlatforms);
     setSelectedStreamId(nextSelectedStreamId);
+    setSelectedInputId(nextSelectedInputId);
     setMessage(successMessage);
   }
 
@@ -211,7 +249,7 @@ export default function SocialStreamPage() {
     setSaving(true);
     setMessage('');
     try {
-      await persistSocialSettings(platforms, selectedStreamId, 'Social restream settings saved');
+      await persistSocialSettings(platforms, selectedStreamId, selectedInputId, 'Social restream settings saved');
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Failed to save social settings');
     } finally {
@@ -224,7 +262,7 @@ export default function SocialStreamPage() {
     setSaving(true);
     setMessage('');
     try {
-      await persistSocialSettings(nextPlatforms, selectedStreamId, successMessage);
+      await persistSocialSettings(nextPlatforms, selectedStreamId, selectedInputId, successMessage);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Failed to save platform settings');
     } finally {
@@ -311,7 +349,15 @@ export default function SocialStreamPage() {
           <h3>Source stream</h3>
           <div style={{ marginTop: 12 }}>
             <label>Select stream</label>
-            <select value={selectedStreamId ?? ''} onChange={(e) => setSelectedStreamId(e.target.value ? Number(e.target.value) : null)}>
+            <select
+              value={selectedStreamId ?? ''}
+              onChange={(e) => {
+                const nextStreamId = e.target.value ? Number(e.target.value) : null;
+                setSelectedStreamId(nextStreamId);
+                const nextStream = streams.find((stream) => stream.id === nextStreamId) || null;
+                setSelectedInputId(nextStream?.input_sources?.find((item) => item.is_enabled)?.id ?? null);
+              }}
+            >
               <option value="">Select an existing stream</option>
               {streams.map((stream) => (
                 <option key={stream.id} value={stream.id}>
@@ -320,9 +366,23 @@ export default function SocialStreamPage() {
               ))}
             </select>
           </div>
+          <div style={{ marginTop: 12 }}>
+            <label>Source URL</label>
+            <select value={selectedInputId ?? ''} onChange={(e) => setSelectedInputId(e.target.value ? Number(e.target.value) : null)}>
+              <option value="">Auto-pick source</option>
+              {availableInputs.map((input) => (
+                <option key={input.id} value={input.id}>
+                  {input.name} ({input.protocol})
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="card" style={{ marginTop: 12, padding: 12, background: 'var(--panel-soft)' }}>
             <div className="muted tiny">Selected source</div>
             <div style={{ marginTop: 6, fontWeight: 800 }}>{selectedStream?.name || 'No stream selected'}</div>
+            <div className="muted tiny" style={{ marginTop: 6 }}>
+              Source input: <code>{selectedInput?.name || (availableInputs.length ? 'Auto-pick source' : '-')}</code>
+            </div>
             <div className="muted tiny" style={{ marginTop: 6 }}>
               Source URL: <code>{sourceUrl || '-'}</code>
             </div>
