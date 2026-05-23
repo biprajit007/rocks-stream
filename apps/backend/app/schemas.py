@@ -252,6 +252,8 @@ class SocialPlatformConfig(BaseModel):
     rotate_every_hours: int = 6
     auto_rotation: bool = False
     config_enabled: bool = True
+    stop_after_minutes: int = 0
+    stop_at: str = "-"
     extra_args: str = ""
     live_id: str = "-"
     post_id: str = "-"

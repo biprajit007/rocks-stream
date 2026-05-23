@@ -37,6 +37,8 @@ type Platform = {
   rotateEveryHours: number;
   autoRotation: boolean;
   configEnabled: boolean;
+  stopAfterMinutes: number;
+  stopAt: string;
   extraArgs: string;
   pid: string;
   started: string;
@@ -53,6 +55,8 @@ const platformDefaults: Omit<Platform, 'name' | 'label' | 'color' | 'ingestUrl' 
   rotateEveryHours: 6,
   autoRotation: false,
   configEnabled: true,
+  stopAfterMinutes: 0,
+  stopAt: '-',
   extraArgs: '',
   pid: '-',
   started: '-',
@@ -114,6 +118,8 @@ function createPlatformFromPreset(
     rotateEveryHours: Number(saved?.rotateEveryHours ?? saved?.rotate_every_hours ?? preset.rotateEveryHours),
     autoRotation: Boolean(saved?.autoRotation ?? saved?.auto_rotation ?? preset.autoRotation),
     configEnabled: Boolean(saved?.configEnabled ?? saved?.config_enabled ?? preset.configEnabled),
+    stopAfterMinutes: Number(saved?.stopAfterMinutes ?? saved?.stop_after_minutes ?? preset.stopAfterMinutes),
+    stopAt: (saved?.stopAt as string | undefined) || (saved?.stop_at as string | undefined) || preset.stopAt,
     extraArgs: (saved?.extraArgs as string | undefined) || (saved?.extra_args as string | undefined) || preset.extraArgs,
     pid: (saved?.pid as string | undefined) || preset.pid,
     started: (saved?.started as string | undefined) || preset.started,
@@ -212,6 +218,8 @@ export default function SocialStreamPage() {
       rotate_every_hours: platform.rotateEveryHours,
       auto_rotation: platform.autoRotation,
       config_enabled: platform.configEnabled,
+      stop_after_minutes: platform.stopAfterMinutes,
+      stop_at: platform.stopAt,
       extra_args: platform.extraArgs,
       pid: platform.pid,
       started: platform.started,
@@ -479,6 +487,18 @@ export default function SocialStreamPage() {
                   onChange={(e) => patchPlatform(platform.name, { rotateEveryHours: Number(e.target.value) || 0 })}
                 />
               </div>
+              <div className="social-field">
+                <label>Auto stop after</label>
+                <select
+                  value={platform.stopAfterMinutes}
+                  onChange={(e) => patchPlatform(platform.name, { stopAfterMinutes: Number(e.target.value) || 0, stopAt: '-' })}
+                >
+                  <option value={0}>Manual stop</option>
+                  <option value={10}>10 minutes</option>
+                  <option value={30}>30 minutes</option>
+                  <option value={60}>60 minutes</option>
+                </select>
+              </div>
               <div className="social-field social-span-2">
                 <label>Extra args</label>
                 <textarea
@@ -514,6 +534,8 @@ export default function SocialStreamPage() {
               <div className="social-meta-right"><span>Started:</span> <strong>{platform.started || '-'}</strong></div>
               <div><span>Restarts:</span> <strong>{platform.restarts}</strong></div>
               <div className="social-meta-right"><span>Last error:</span> <strong>{platform.lastError || '-'}</strong></div>
+              <div><span>Auto stop:</span> <strong>{platform.stopAfterMinutes ? `${platform.stopAfterMinutes} min` : 'Manual'}</strong></div>
+              <div className="social-meta-right"><span>Stop at:</span> <strong>{platform.stopAt || '-'}</strong></div>
             </div>
 
             <div className="row social-actions" style={{ marginTop: 12 }}>

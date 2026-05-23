@@ -20,7 +20,7 @@ app.add_middleware(
 
 
 @app.on_event("startup")
-def startup_event() -> None:
+async def startup_event() -> None:
     os.makedirs(settings.hls_root, exist_ok=True)
     os.makedirs(settings.logos_root, exist_ok=True)
     os.makedirs(settings.logs_root, exist_ok=True)
@@ -31,6 +31,7 @@ def startup_event() -> None:
         sync_main_stream_alias(db)
     finally:
         db.close()
+    social.restore_scheduled_social_stops()
 
 
 @app.get("/health")

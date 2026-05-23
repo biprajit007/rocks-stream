@@ -1,9 +1,11 @@
-from datetime import datetime
+import asyncio
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.db import SessionLocal
 from app.deps import get_current_user, get_db
 from app.models import InputSource, OutputType, SocialRestreamSettings, Stream, User
 from app.schemas import SocialRestreamSettingsOut, SocialRestreamSettingsUpdate
@@ -11,6 +13,7 @@ from app.services.engine_client import post_engine
 from app.services.url_builder import build_playback_urls
 
 router = APIRouter(prefix="/social", tags=["social"])
+SOCIAL_STOP_TASKS: dict[str, asyncio.Task] = {}
 
 
 def _default_platform(name: str, ingest_url: str) -> dict:
@@ -27,6 +30,8 @@ def _default_platform(name: str, ingest_url: str) -> dict:
         "rotate_every_hours": 6,
         "auto_rotation": False,
         "config_enabled": True,
+        "stop_after_minutes": 0,
+        "stop_at": "-",
         "extra_args": "",
         "live_id": "-",
         "post_id": "-",
@@ -52,6 +57,72 @@ def _default_settings() -> SocialRestreamSettings:
 def _ensure_schema(db: Session) -> None:
     db.execute(text("ALTER TABLE social_restream_settings ADD COLUMN IF NOT EXISTS source_input_id INTEGER"))
     db.commit()
+
+
+def _cancel_stop_task(platform: str) -> None:
+    task = SOCIAL_STOP_TASKS.pop(platform, None)
+    if task and not task.done():
+        task.cancel()
+
+
+async def _auto_stop_social_platform(platform: str, stop_at_iso: str, delay_seconds: float) -> None:
+    try:
+        await asyncio.sleep(max(delay_seconds, 0))
+        db = SessionLocal()
+        try:
+            _ensure_schema(db)
+            settings = _get_or_create(db)
+            attr = _platform_attr(platform)
+            config = dict(getattr(settings, attr) or {})
+            if not settings.source_stream_id or not config.get('enabled') or config.get('stop_at') != stop_at_iso:
+                return
+            try:
+                await post_engine(f'/engine/social/{attr}/stop', {'source_stream_id': settings.source_stream_id})
+                last_error = f"Auto-stopped after {int(config.get('stop_after_minutes') or 0)} minutes"
+            except HTTPException as exc:
+                last_error = str(exc.detail)
+            _update_platform(settings, attr, {
+                'enabled': False,
+                'pid': '-',
+                'stop_at': '-',
+                'last_error': last_error,
+            })
+            settings.updated_at = datetime.utcnow()
+            db.commit()
+        finally:
+            db.close()
+    except asyncio.CancelledError:
+        raise
+    finally:
+        SOCIAL_STOP_TASKS.pop(platform, None)
+
+
+def _schedule_stop_task(platform: str, stop_at_iso: str) -> None:
+    _cancel_stop_task(platform)
+    if not stop_at_iso or stop_at_iso == '-':
+        return
+    try:
+        stop_at = datetime.fromisoformat(stop_at_iso)
+    except ValueError:
+        return
+    delay_seconds = (stop_at - datetime.utcnow()).total_seconds()
+    SOCIAL_STOP_TASKS[platform] = asyncio.create_task(_auto_stop_social_platform(platform, stop_at_iso, delay_seconds))
+
+
+def restore_scheduled_social_stops() -> None:
+    db = SessionLocal()
+    try:
+        _ensure_schema(db)
+        settings = _get_or_create(db)
+        for platform in ('facebook', 'youtube', 'tiktok', 'twitch'):
+            config = dict(getattr(settings, platform) or {})
+            stop_at = config.get('stop_at') or '-'
+            if config.get('enabled') and stop_at != '-':
+                _schedule_stop_task(platform, stop_at)
+            else:
+                _cancel_stop_task(platform)
+    finally:
+        db.close()
 
 
 def _get_or_create(db: Session) -> SocialRestreamSettings:
@@ -187,6 +258,10 @@ def update_social_settings(payload: SocialRestreamSettingsUpdate, db: Session = 
     settings.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(settings)
+    for platform in ('facebook', 'youtube', 'tiktok', 'twitch'):
+        config = dict(getattr(settings, platform) or {})
+        if not config.get('enabled') or not config.get('stop_at') or config.get('stop_at') == '-':
+            _cancel_stop_task(platform)
     return _serialize(settings)
 
 
@@ -240,10 +315,18 @@ async def start_social_platform(platform: str, db: Session = Depends(get_db), _:
         'pid': str(result.get('process_id') or '-'),
         'started': datetime.utcnow().isoformat(),
         'last_error': '-',
+        'stop_at': '-',
         'live_id': config.get('live_id') or f"live-{stream.id}",
         'post_id': config.get('post_id') or '-',
         'restarts': int(config.get('restarts') or 0),
     })
+    stop_after_minutes = int(config.get('stop_after_minutes') or 0)
+    if stop_after_minutes > 0:
+        stop_at = (datetime.utcnow() + timedelta(minutes=stop_after_minutes)).isoformat()
+        _update_platform(settings, attr, {'stop_at': stop_at})
+        _schedule_stop_task(attr, stop_at)
+    else:
+        _cancel_stop_task(attr)
     settings.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(settings)
@@ -268,8 +351,10 @@ async def stop_social_platform(platform: str, db: Session = Depends(get_db), _: 
         'enabled': False,
         'config_enabled': bool(config.get('config_enabled', True)),
         'pid': '-',
+        'stop_at': '-',
         'last_error': config.get('last_error') or '-',
     })
+    _cancel_stop_task(attr)
     settings.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(settings)
@@ -327,7 +412,15 @@ async def restart_social_platform(platform: str, db: Session = Depends(get_db), 
         'pid': str(result.get('process_id') or '-'),
         'started': datetime.utcnow().isoformat(),
         'last_error': '-',
+        'stop_at': '-',
     })
+    stop_after_minutes = int(config.get('stop_after_minutes') or 0)
+    if stop_after_minutes > 0:
+        stop_at = (datetime.utcnow() + timedelta(minutes=stop_after_minutes)).isoformat()
+        _update_platform(settings, attr, {'stop_at': stop_at})
+        _schedule_stop_task(attr, stop_at)
+    else:
+        _cancel_stop_task(attr)
     settings.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(settings)
