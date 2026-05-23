@@ -17,7 +17,10 @@ def _b64url_decode(value: str) -> bytes:
 
 @lru_cache(maxsize=1)
 def _public_key():
-    return serialization.load_ssh_public_key(settings.playback_token_public_key.encode("utf-8"))
+    raw_key = settings.playback_token_public_key.strip().encode("utf-8")
+    if raw_key.startswith(b"-----BEGIN"):
+        return serialization.load_pem_public_key(raw_key)
+    return serialization.load_ssh_public_key(raw_key)
 
 
 def _stream_claims(payload: dict[str, Any]) -> set[str]:

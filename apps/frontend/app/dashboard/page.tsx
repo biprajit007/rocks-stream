@@ -621,7 +621,7 @@ export default function DashboardPage() {
                   <label className="row stat-card" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
                     <span>
                       <strong>Key auth encryption</strong>
-                      <span className="muted tiny" style={{ display: 'block', marginTop: 4 }}>Require signed 2-minute playback token</span>
+                      <span className="muted tiny" style={{ display: 'block', marginTop: 4 }}>Require signed playback token</span>
                     </span>
                     <input
                       type="checkbox"

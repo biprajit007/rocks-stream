@@ -21,7 +21,20 @@ class Settings(BaseSettings):
     logs_root: str = "/var/log/rocks-stream"
     cors_origins: str = "http://localhost:3000,https://keystream.rockstreamer.com"
     playback_token_public_key: str = (
-        "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCzoUUfaZ7e05TxehQNBxHAo5ZURgRBQ7EeBofJxw8SjlrTuk3LXCC1fzbvkaw+iTQrHcWPbMub5aR/bKNXI2mc2mW/Lvwsq3t8RVAsp/OcTC6viqWwKvz07c575v6thdf8m7FlbF5R+rTM3lsBeHz0mZkiRZKbNyO+zrk14JiwETmnamlAP3wrS5w47ClCaaiaLgtkOHQ3WUZZU3lR47VkIN5RGkSuLC9pJPSzVT9yJjuPOyqwr1wLRYOj0W6tSE9T2z/K1J51OGrDohjPTuD2vIHQEgoeaU+vCmHBDfPpuUDN3KqKTer/qkuzeR65/Og1DBbofJt+LVPaNuxvMSGpG1clPMRg+F3Gd9EtgE45t+Zdl8b79oDM6hiAcbiujkHCjd2E+YofDoSt8fA47Kf0YiLnKu5HLsww6Khl2SpSbDoFSsqgUmgWzueBSAmb47brSmdgYjWf+qI29R4HF18Pm9ISis1wKhebcUiyI0Sxs0nzHeqG/P6gAPWfWDHVMGtp+6g5mTxgEQ5b/d5wlVXegT8OJd/xUvRSJbNFlzKOAo16SEeYDz8TGx/TTTna8jsOgM1drXBRP57qnrlqfxcEcQHSd6Nn4qjMT5Qnox40s4g+rYcV1+uk6qLLLW2NV6eGgZqnjn8IYtZzmxhnVWLUpjF/vjAEiBOmv463vfuggQ== user@moviestreamhq.com"
+        "-----BEGIN PUBLIC KEY-----\n"
+        "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2Y2wXlEYL3p3TtYYMaSh\n"
+        "UWZFH3zavhneWjSK773U0d1LMR4r7VPlsRbiQuRHYganRZj1F0wJoQbijADJC6fI\n"
+        "LXHrVX3RmjPU9GE3l4sarxqlwmz8eiEyAHCqPmfCjYgCTzXBLEOfZLBFMSoMfNhG\n"
+        "exTgSpB5Tg/glSIiTB1Ehw0PfwqkBWONddpqIkk8CWEAckzt7mzAKC5XAWdMlf0V\n"
+        "CeGrba5lu5KaSSHMPyq5iYpSVWGsOM5LrqnV0bSot1kDuhd+GafagHUjGVKYW9SH\n"
+        "3p+FoQf3LBT2T5fZ0nuzt2K5hRXzI7zHyDSWvDt9HBy0QtOL1OCFelGpCWzPB3AK\n"
+        "ivwb1DCHfRzFQ3Q/8NnXqVX8pBUFG8tYy8tl+b5qygjoTSnIVgBh+dDS3GCYV3/3\n"
+        "NsDjgXvJtVB3MpwSN8DB8bjGvabbipK/jGXyYGDg68sUa1FAR8icnexV8ColihNQ\n"
+        "A7L0zbZ1zBKqJTOtOspBaR28HITV90Vjp2E2nGlAeFo1vcqVrt3ynQ/BUT/3+Vst\n"
+        "UUuGQa2M3wPycccl9cXZQ2Qi23toUiUrcIYynqNJXSa8/MDssKpw30a6jRnBtLZf\n"
+        "w7XRCyni35FviWujlGpY0qY7ifUZmMwUpztlKQBQAMBotmPunJ8mZ+IAUCCMV1zs\n"
+        "8blEPThnHaLg7v5hUg/FnQsCAwEAAQ==\n"
+        "-----END PUBLIC KEY-----"
     )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
