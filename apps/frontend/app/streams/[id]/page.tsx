@@ -47,6 +47,17 @@ export default function StreamDetailPage({ params }: { params: { id: string } })
       <div className="card">
         <h2>{stream.name}</h2>
         <p className="muted">Key: <code>{stream.stream_key}</code></p>
+        <label className="row" style={{ alignItems: 'center', marginBottom: 12 }}>
+          <input
+            type="checkbox"
+            checked={Boolean(stream.playback_auth_enabled)}
+            onChange={async (e) => {
+              await apiFetch(`/streams/${stream.id}`, { method: 'PATCH', body: JSON.stringify({ playback_auth_enabled: e.target.checked }) });
+              await load();
+            }}
+          />
+          <span>Key auth encryption</span>
+        </label>
         {error ? <p style={{ color: '#fecaca' }}>{error}</p> : null}
         <div className="row">
           <span className={`badge ${stream.status}`}>{stream.status}</span>

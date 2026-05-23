@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.db import Base, engine, SessionLocal
-from app.routers import ads, auth, social, streams
+from app.routers import ads, auth, playback, social, streams
 from app.services.main_stream import sync_main_stream_alias
 from app.services.seed import seed_admin
 
@@ -48,3 +48,4 @@ app.include_router(auth.router, prefix=settings.api_v1_prefix)
 app.include_router(streams.router, prefix=settings.api_v1_prefix)
 app.include_router(ads.router, prefix=settings.api_v1_prefix)
 app.include_router(social.router, prefix=settings.api_v1_prefix)
+app.include_router(playback.router)

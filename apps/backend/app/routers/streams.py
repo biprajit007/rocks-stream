@@ -76,6 +76,7 @@ def create_stream(payload: StreamCreate, db: Session = Depends(get_db), _: User 
         description=payload.description,
         is_enabled=payload.is_enabled,
         abr_enabled=payload.abr_enabled,
+        playback_auth_enabled=payload.playback_auth_enabled,
         is_primary=payload.is_primary,
         logo_enabled=payload.logo_enabled,
         logo_position_mode=payload.logo_position_mode,

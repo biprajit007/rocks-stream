@@ -112,6 +112,7 @@ class StreamBase(BaseModel):
     description: str | None = None
     is_enabled: bool = True
     abr_enabled: bool = False
+    playback_auth_enabled: bool = False
     is_primary: bool = False
     logo_enabled: bool = False
     logo_position_mode: LogoPositionMode = LogoPositionMode.corner
@@ -133,6 +134,7 @@ class StreamUpdate(BaseModel):
     description: str | None = None
     is_enabled: bool | None = None
     abr_enabled: bool | None = None
+    playback_auth_enabled: bool | None = None
     is_primary: bool | None = None
     logo_enabled: bool | None = None
     logo_position_mode: LogoPositionMode | None = None

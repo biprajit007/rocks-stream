@@ -20,6 +20,7 @@ type StreamSummary = {
   stream_key: string;
   status: string;
   abr_enabled: boolean;
+  playback_auth_enabled: boolean;
   is_primary?: boolean;
   is_enabled?: boolean;
   logo_enabled?: boolean;
@@ -51,6 +52,7 @@ type StreamFormState = {
   description: string;
   is_enabled: boolean;
   abr_enabled: boolean;
+  playback_auth_enabled: boolean;
   input_protocol: 'hls' | 'rtmp' | 'srt';
   input: ReturnType<typeof createDefaultInputDraft>;
   output_type: 'hls' | 'rtmp' | 'srt';
@@ -73,6 +75,7 @@ const makeDefaultForm = (index = 1): StreamFormState => ({
   description: '',
   is_enabled: true,
   abr_enabled: false,
+  playback_auth_enabled: false,
   input_protocol: 'srt',
   input: createDefaultInputDraft('srt'),
   output_type: 'hls',
@@ -231,6 +234,7 @@ export default function DashboardPage() {
           description: form.description || null,
           is_enabled: form.is_enabled,
           abr_enabled: form.abr_enabled,
+          playback_auth_enabled: form.playback_auth_enabled,
           inputs: [{
             name: form.input.name,
             protocol: form.input_protocol,
@@ -466,6 +470,10 @@ export default function DashboardPage() {
               <input type="checkbox" checked={form.abr_enabled} onChange={(e) => setForm({ ...form, abr_enabled: e.target.checked })} />
               <span>Enable ABR</span>
             </label>
+            <label className="row" style={{ alignItems: 'center' }}>
+              <input type="checkbox" checked={form.playback_auth_enabled} onChange={(e) => setForm({ ...form, playback_auth_enabled: e.target.checked })} />
+              <span>Key auth encryption</span>
+            </label>
           </div>
 
             <h4 style={{ marginTop: 16 }}>Input source</h4>
@@ -606,9 +614,25 @@ export default function DashboardPage() {
                 <div className="grid grid-2">
                   <div className="stat-card"><div className="muted tiny">Enabled</div><div className="stat-value">{String(selected.is_enabled ?? true)}</div></div>
                   <div className="stat-card"><div className="muted tiny">ABR</div><div className="stat-value">{String(selected.abr_enabled)}</div></div>
+                  <div className="stat-card"><div className="muted tiny">Key auth</div><div className="stat-value">{selected.playback_auth_enabled ? 'on' : 'off'}</div></div>
                   <div className="stat-card"><div className="muted tiny">Logo</div><div className="stat-value">{String(selected.logo_enabled ?? false)}</div></div>
                   <div className="stat-card"><div className="muted tiny">Inputs</div><div className="stat-value">{selected.input_sources?.length || 0}</div></div>
                   <div className="stat-card"><div className="muted tiny">Audio</div><div className="stat-value">AAC</div></div>
+                  <label className="row stat-card" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>
+                      <strong>Key auth encryption</strong>
+                      <span className="muted tiny" style={{ display: 'block', marginTop: 4 }}>Require signed 2-minute playback token</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(selected.playback_auth_enabled)}
+                      onChange={async (e) => {
+                        await apiFetch(`/streams/${selected.id}`, { method: 'PATCH', body: JSON.stringify({ playback_auth_enabled: e.target.checked }) });
+                        await loadStreams();
+                        await refreshSelected();
+                      }}
+                    />
+                  </label>
                 </div>
               ) : null}
 

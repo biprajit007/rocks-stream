@@ -2,6 +2,7 @@
 
 import Hls from 'hls.js';
 import { useEffect, useRef } from 'react';
+import { getToken } from '../lib/api';
 
 export default function HlsPlayer({ src }: { src: string }) {
   const ref = useRef<HTMLVideoElement | null>(null);
@@ -14,7 +15,12 @@ export default function HlsPlayer({ src }: { src: string }) {
       return;
     }
     if (Hls.isSupported()) {
-      const hls = new Hls();
+      const hls = new Hls({
+        xhrSetup: (xhr) => {
+          const token = getToken();
+          if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        },
+      });
       hls.loadSource(src);
       hls.attachMedia(video);
       return () => hls.destroy();

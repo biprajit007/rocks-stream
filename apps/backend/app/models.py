@@ -51,6 +51,7 @@ class Stream(Base):
     description: Mapped[str | None] = mapped_column(Text)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     abr_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    playback_auth_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[StreamStatus] = mapped_column(Enum(StreamStatus), default=StreamStatus.stopped)
     bitrate_kbps: Mapped[int | None] = mapped_column(Integer)
