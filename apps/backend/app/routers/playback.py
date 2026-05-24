@@ -179,8 +179,6 @@ def serve_aes_key(
         media_type="application/octet-stream",
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Authorization",
         },
     )
 
@@ -206,8 +204,6 @@ def serve_hls_file(
 
     headers = {
         "Cache-Control": "no-cache",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Authorization, Range, Content-Type",
     }
 
     suffix = target.suffix.lower()
