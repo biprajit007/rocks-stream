@@ -8,6 +8,7 @@ from app.db import Base, engine, SessionLocal
 from app.routers import ads, auth, playback, social, streams
 from app.services.main_stream import sync_main_stream_alias
 from app.services.seed import seed_admin
+from app.services.aes_key_store import current_key  # warm up key store
 
 app = FastAPI(title=settings.app_name)
 app.add_middleware(
@@ -32,6 +33,8 @@ async def startup_event() -> None:
     finally:
         db.close()
     social.restore_scheduled_social_stops()
+    # Warm up AES key store — generates the first rotating key immediately
+    current_key()
 
 
 @app.get("/health")
