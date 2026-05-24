@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.deps import get_db
 from app.models import Stream, User
 from app.security import decode_token
-from app.services.playback_auth import verify_playback_token
+from app.services.playback_auth import verify_playback_token, verify_playback_token_any_stream
 from app.services.aes_key_store import current_key, get_key, key_url
 
 router = APIRouter(tags=["playback"])
@@ -51,12 +51,6 @@ def _require_playback_access(
     token: str | None,
     authorization: str | None,
 ) -> str | None:
-    """
-    Enforce playback auth when stream.playback_auth_enabled is True.
-    Returns the playback token if access is granted (used for manifest rewriting),
-    or None if auth is disabled.
-    Raises HTTP 401 if auth is required but the token is invalid/missing.
-    """
     if not stream.playback_auth_enabled:
         return token
 
@@ -66,9 +60,9 @@ def _require_playback_access(
     if _is_admin_token(db, bearer):
         return token
 
-    # Try playback JWT (RS256 signed by client with matching private key)
+    # Try playback JWT (RS256)
     playback_token = token or bearer
-    if playback_token and verify_playback_token(playback_token, key):
+    if playback_token and (verify_playback_token(playback_token, key) or verify_playback_token_any_stream(playback_token)):
         return playback_token
     if playback_token and key == "main" and verify_playback_token(playback_token, stream.stream_key):
         return playback_token
@@ -92,13 +86,8 @@ def _append_token(uri: str, token: str) -> str:
 
 
 def _inject_aes_key_tag(content: str, stream_key: str) -> str:
-    """
-    Inject (or replace) the #EXT-X-KEY tag in an HLS variant playlist
-    with the current AES-128 rotating key.
-    """
     kid, _ = current_key()
     enc_url = key_url(kid)
-    # Build IV from kid for determinism (16 hex bytes, zero-padded)
     iv_hex = "0x" + kid.ljust(32, "0")
     key_tag = f'#EXT-X-KEY:METHOD=AES-128,URI="{enc_url}",IV={iv_hex}'
 
@@ -110,12 +99,10 @@ def _inject_aes_key_tag(content: str, stream_key: str) -> str:
             if not replaced:
                 new_lines.append(key_tag)
                 replaced = True
-            # drop old duplicate key tags
             continue
         new_lines.append(line)
 
     if not replaced:
-        # Insert after #EXTM3U header line
         insert_at = 1 if new_lines and new_lines[0].startswith("#EXTM3U") else 0
         new_lines.insert(insert_at, key_tag)
 
@@ -123,11 +110,6 @@ def _inject_aes_key_tag(content: str, stream_key: str) -> str:
 
 
 def _rewrite_manifest(content: str, token: str | None, stream_key: str = "", is_variant: bool = False) -> str:
-    """
-    Rewrite an HLS manifest:
-      - Append ?token= to all segment/sub-manifest URIs (for auth'd streams)
-      - Inject AES-128 key tag into variant playlists
-    """
     if is_variant:
         content = _inject_aes_key_tag(content, stream_key)
 
@@ -160,52 +142,21 @@ def serve_aes_key(
     db: Session = Depends(get_db),
 ):
     """
-    Serve the raw 16-byte AES-128 key for a given key ID.
-    Requires the same playback token as the HLS manifest.
-    The HLS player fetches this automatically via the #EXT-X-KEY URI.
+    Serve the raw 16-byte AES-128 key.
+    Accepts: admin JWT or any valid RS256 playback JWT (signature + expiry only,
+    no stream-key check needed — the manifest already enforced that).
     """
     bearer = _bearer_token(authorization)
     playback_token = token or bearer
 
-    # Must present a valid playback JWT or admin JWT
     if not playback_token:
         raise HTTPException(status_code=401, detail="Playback token required for AES key")
 
     # Accept admin JWT
     if not _is_admin_token(db, playback_token):
-        # Try playback JWT — wildcard "*" accepted (no specific stream check needed here)
-        from app.services.playback_auth import verify_playback_token as _vpt
-        if not _vpt(playback_token, "*") and not _vpt(playback_token, "main"):
-            # Try any stream key match (broad check — key endpoint doesn't know stream)
-            # We just verify the JWT signature + expiry, stream claim check is relaxed
-            from app.services.playback_auth import _b64url_decode, _public_key
-            import json, base64
-            from cryptography.hazmat.primitives import hashes, serialization
-            from cryptography.hazmat.primitives.asymmetric import padding
-            from cryptography.exceptions import InvalidSignature
-            from datetime import datetime, timezone
-            try:
-                parts = playback_token.split(".", 2)
-                if len(parts) != 3:
-                    raise ValueError("bad token")
-                header_part, payload_part, sig_part = parts
-                header = json.loads(_b64url_decode(header_part))
-                payload = json.loads(_b64url_decode(payload_part))
-                if header.get("alg") != "RS256":
-                    raise ValueError("bad alg")
-                signing_input = f"{header_part}.{payload_part}".encode()
-                _public_key().verify(
-                    _b64url_decode(sig_part),
-                    signing_input,
-                    padding.PKCS1v15(),
-                    hashes.SHA256(),
-                )
-                now = int(datetime.now(timezone.utc).timestamp())
-                exp = payload.get("exp")
-                if not isinstance(exp, int) or exp < now:
-                    raise ValueError("expired")
-            except Exception:
-                raise HTTPException(status_code=401, detail="Invalid playback token")
+        # Accept any valid RS256 playback JWT (signature + expiry check only)
+        if not verify_playback_token_any_stream(playback_token):
+            raise HTTPException(status_code=401, detail="Invalid playback token")
 
     key_bytes = get_key(kid)
     if key_bytes is None:
@@ -250,7 +201,6 @@ def serve_hls_file(
     suffix = target.suffix.lower()
     if suffix == ".m3u8":
         content = target.read_text(encoding="utf-8")
-        # Variant playlist (has #EXTINF segments) — inject AES key + rewrite URIs
         is_variant = "#EXTINF" in content
         content = _rewrite_manifest(content, playback_token, stream_key=key, is_variant=is_variant)
         return PlainTextResponse(
