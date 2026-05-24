@@ -13,6 +13,18 @@ from app.security import decode_token
 from app.services.playback_auth import verify_playback_token, verify_playback_token_any_stream
 from app.services.aes_key_store import current_key, get_key, key_url
 
+def _aes_encrypt_segment(data: bytes, kid: str) -> bytes:
+    """Encrypt raw MPEG-TS segment bytes with AES-128-CBC using key from store."""
+    from Crypto.Cipher import AES
+    from Crypto.Util.Padding import pad
+    key_bytes = get_key(kid)
+    if key_bytes is None:
+        raise HTTPException(status_code=503, detail="AES key expired, retry")
+    iv_int = int(kid.rjust(32, "0"), 16)
+    iv_bytes = iv_int.to_bytes(16, "big")
+    cipher = AES.new(key_bytes, AES.MODE_CBC, iv_bytes)
+    return cipher.encrypt(pad(data, AES.block_size))
+
 router = APIRouter(tags=["playback"])
 
 
@@ -208,6 +220,16 @@ def serve_hls_file(
             content,
             media_type="application/vnd.apple.mpegurl",
             headers=headers,
+        )
+
+    if suffix == ".ts" and stream.playback_auth_enabled:
+        kid, _ = current_key()
+        raw = target.read_bytes()
+        encrypted = _aes_encrypt_segment(raw, kid)
+        return Response(
+            content=encrypted,
+            media_type="video/mp2t",
+            headers={**headers, "Content-Length": str(len(encrypted))},
         )
 
     media_type = "video/mp2t" if suffix == ".ts" else "application/octet-stream"
