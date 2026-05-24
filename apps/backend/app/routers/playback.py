@@ -202,7 +202,8 @@ def serve_hls_file(
     if suffix == ".m3u8":
         content = target.read_text(encoding="utf-8")
         is_variant = "#EXTINF" in content
-        content = _rewrite_manifest(content, playback_token, stream_key=key, is_variant=is_variant)
+        # Only inject AES key when playback_auth_enabled — disabled means free playback, no encryption
+        content = _rewrite_manifest(content, playback_token, stream_key=key, is_variant=is_variant and stream.playback_auth_enabled)
         return PlainTextResponse(
             content,
             media_type="application/vnd.apple.mpegurl",
