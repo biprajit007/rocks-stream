@@ -88,7 +88,7 @@ def _append_token(uri: str, token: str) -> str:
 def _inject_aes_key_tag(content: str, stream_key: str) -> str:
     kid, _ = current_key()
     enc_url = key_url(kid)
-    iv_hex = "0x" + kid.ljust(32, "0")
+    iv_hex = "0x" + kid.rjust(32, "0")
     key_tag = f'#EXT-X-KEY:METHOD=AES-128,URI="{enc_url}",IV={iv_hex}'
 
     lines = content.splitlines()
