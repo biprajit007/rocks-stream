@@ -27,6 +27,22 @@ class OutputType(str, enum.Enum):
     hls = "hls"
 
 
+class StreamJobAction(str, enum.Enum):
+    start = "start"
+    stop = "stop"
+    restart = "restart"
+    social_start = "social_start"
+    social_stop = "social_stop"
+    social_restart = "social_restart"
+
+
+class StreamJobStatus(str, enum.Enum):
+    queued = "queued"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
+
+
 class LogoPositionMode(str, enum.Enum):
     corner = "corner"
     coordinates = "coordinates"
@@ -74,6 +90,7 @@ class Stream(Base):
     abr_profiles: Mapped[list["AbrProfile"]] = relationship("AbrProfile", back_populates="stream", cascade="all, delete-orphan")
     runtime_state: Mapped["StreamRuntimeState | None"] = relationship("StreamRuntimeState", back_populates="stream", uselist=False, cascade="all, delete-orphan")
     logs: Mapped[list["StreamLogEntry"]] = relationship("StreamLogEntry", back_populates="stream", cascade="all, delete-orphan")
+    jobs: Mapped[list["StreamJob"]] = relationship("StreamJob", back_populates="stream", cascade="all, delete-orphan")
     logo_asset: Mapped["LogoAsset | None"] = relationship("LogoAsset", foreign_keys=[logo_asset_id])
 
 
@@ -98,7 +115,6 @@ class InputSource(Base):
 
 class OutputTarget(Base):
     __tablename__ = "output_targets"
-    __table_args__ = (UniqueConstraint("stream_id", "output_type", name="uq_stream_output_type"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     stream_id: Mapped[int] = mapped_column(ForeignKey("streams.id", ondelete="CASCADE"), nullable=False)
@@ -164,6 +180,37 @@ class StreamLogEntry(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     stream: Mapped[Stream] = relationship("Stream", back_populates="logs")
+
+
+class StreamJob(Base):
+    __tablename__ = "stream_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    stream_id: Mapped[int] = mapped_column(ForeignKey("streams.id", ondelete="CASCADE"), nullable=False)
+    action: Mapped[StreamJobAction] = mapped_column(Enum(StreamJobAction), nullable=False)
+    status: Mapped[StreamJobStatus] = mapped_column(Enum(StreamJobStatus), default=StreamJobStatus.queued)
+    engine: Mapped[str] = mapped_column(String(64), default="ffmpeg")
+    worker_id: Mapped[str | None] = mapped_column(String(128))
+    process_id: Mapped[int | None] = mapped_column(Integer)
+    request_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    result_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    stream: Mapped[Stream] = relationship("Stream", back_populates="jobs")
+
+
+class WorkerHeartbeat(Base):
+    __tablename__ = "worker_heartbeats"
+
+    worker_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    engine: Mapped[str] = mapped_column(String(64), default="ffmpeg")
+    status: Mapped[str] = mapped_column(String(64), default="idle")
+    active_stream_id: Mapped[int | None] = mapped_column(Integer)
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class AdSettings(Base):

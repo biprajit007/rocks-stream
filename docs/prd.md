@@ -1,11 +1,11 @@
 # Rocks Stream PRD
 
 ## 1. Product Summary
-Rocks Stream is a self-hosted web streaming platform for ingesting live sources, transcoding them with GStreamer, and publishing managed SRT, RTMP, and HLS outputs through a secure admin portal. It is inspired by Nimble Streamer’s operational model but delivered as a modern Docker Compose stack.
+Rocks Stream is a self-hosted web streaming platform for ingesting live sources, transcoding them with FFmpeg, and publishing managed SRT, RTMP, and HLS outputs through a secure admin portal. It is inspired by Nimble Streamer’s operational model but delivered as a modern Docker Compose stack.
 
 ## 2. Goals
 - Let admins manage live stream inputs, outputs, ABR profiles, overlays, and playback URLs from one web portal.
-- Use GStreamer end-to-end for ingest, processing, packaging, and restreaming.
+- Use FFmpeg end-to-end for ingest, processing, packaging, and restreaming.
 - Support production deployment behind Nginx with HTTPS and Route53 DNS.
 - Provide health, logs, and operational controls for every stream.
 
@@ -62,7 +62,7 @@ Rocks Stream is a self-hosted web streaming platform for ingesting live sources,
 - Enable/disable overlay per stream.
 - Support corner placement and freeform x/y positioning.
 - Preview positioning in the UI.
-- Pass overlay settings to the GStreamer pipeline builder.
+- Pass overlay settings to the FFmpeg pipeline builder.
 
 ### 5.6 Streaming Engine
 - Start/stop/restart stream pipelines.

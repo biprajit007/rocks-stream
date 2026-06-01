@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
 from app.db import SessionLocal
-from app.models import LogoAsset, Stream, StreamLogEntry, StreamRuntimeState, StreamStatus
-from app.pipeline_builder import build_pipeline, write_master_playlist
+from app.models import InputSource, LogoAsset, Stream, StreamLogEntry, StreamRuntimeState, StreamStatus
+from app.ffmpeg_builder import build_ffmpeg_pipeline, write_master_playlist
 
 
 class PipelineManager:
@@ -116,6 +116,15 @@ class PipelineManager:
             db.flush()
         return runtime
 
+    def _read_log_tail(self, logfile: str, limit: int = 4000) -> str:
+        try:
+            return Path(logfile).read_text(errors="ignore")[-limit:]
+        except Exception:
+            return ""
+
+    def _build_stream_spec(self, stream: Stream, logo: LogoAsset | None, source: InputSource | None = None):
+        return build_ffmpeg_pipeline(stream, logo, source)
+
     def start(self, stream_id: int) -> dict:
         with self.lock:
             db = self._db()
@@ -128,12 +137,58 @@ class PipelineManager:
                     runtime = self._runtime(db, stream_id)
                     return {"message": "Stream already running", "engine_status": runtime.engine_status, "stream_status": stream.status.value, "process_id": runtime.process_id, "command": runtime.command, "preview_url": runtime.preview_url, "active_input_id": runtime.active_input_id, "details": runtime.details}
 
+                enabled_inputs = sorted([source for source in stream.input_sources if source.is_enabled], key=lambda item: item.priority)
+                if not enabled_inputs:
+                    raise ValueError("No enabled input sources configured")
+
                 logo = db.query(LogoAsset).filter(LogoAsset.id == stream.logo_asset_id).first() if stream.logo_asset_id else None
-                spec = build_pipeline(stream, logo)
                 logfile = os.path.join(settings.logs_root, f"stream-{stream.stream_key}.log")
                 os.makedirs(settings.logs_root, exist_ok=True)
-                handle = open(logfile, "ab")
-                proc = subprocess.Popen(spec.command, shell=True, stdout=handle, stderr=handle, preexec_fn=os.setsid)
+                attempts: list[dict] = []
+                proc = None
+                spec = None
+                grace_seconds = max(0.0, float(settings.pipeline_start_grace_seconds))
+
+                for source in enabled_inputs:
+                    spec = self._build_stream_spec(stream, logo, source)
+                    started_at = datetime.utcnow()
+                    with open(logfile, "ab") as handle:
+                        marker = (
+                            f"\n[{started_at.isoformat()}Z] starting stream={stream.stream_key} "
+                            f"input_id={source.id} protocol={source.protocol.value} priority={source.priority}\n"
+                        )
+                        handle.write(marker.encode("utf-8"))
+                        handle.flush()
+                        proc = subprocess.Popen(spec.command, shell=True, stdout=handle, stderr=handle, preexec_fn=os.setsid)
+
+                    try:
+                        proc.wait(timeout=grace_seconds)
+                    except subprocess.TimeoutExpired:
+                        attempts.append({
+                            "input_id": source.id,
+                            "protocol": source.protocol.value,
+                            "priority": source.priority,
+                            "status": "running",
+                            "pid": proc.pid,
+                        })
+                        break
+
+                    attempts.append({
+                        "input_id": source.id,
+                        "protocol": source.protocol.value,
+                        "priority": source.priority,
+                        "status": "failed",
+                        "pid": proc.pid,
+                        "returncode": proc.returncode,
+                        "log_tail": self._read_log_tail(logfile),
+                    })
+                    self._log(db, stream_id, "warning", f"Input {source.id} exited during startup with code {proc.returncode}; trying next input")
+                    proc = None
+                    spec = None
+
+                if proc is None or spec is None or proc.poll() is not None:
+                    raise RuntimeError("All enabled inputs failed during pipeline startup")
+
                 self.processes[proc_key] = proc
 
                 runtime = self._runtime(db, stream_id)
@@ -142,7 +197,7 @@ class PipelineManager:
                 runtime.active_input_id = spec.active_input_id
                 runtime.command = spec.command
                 runtime.preview_url = spec.preview_url
-                runtime.details = {**spec.details, "logfile": logfile}
+                runtime.details = {**spec.details, "media_engine": "ffmpeg", "logfile": logfile, "startup_attempts": attempts}
                 runtime.last_heartbeat_at = datetime.utcnow()
                 runtime.updated_at = datetime.utcnow()
 
@@ -164,7 +219,13 @@ class PipelineManager:
                     stream.status = StreamStatus.error
                     runtime = self._runtime(db, stream_id)
                     runtime.engine_status = "error"
-                    runtime.details = {"error": str(exc)}
+                    details = {"error": str(exc)}
+                    if "attempts" in locals():
+                        details["startup_attempts"] = attempts
+                    if "logfile" in locals():
+                        details["logfile"] = logfile
+                    details["media_engine"] = "ffmpeg"
+                    runtime.details = details
                     runtime.updated_at = datetime.utcnow()
                     self._log(db, stream_id, "error", f"Start failed: {exc}")
                     db.commit()

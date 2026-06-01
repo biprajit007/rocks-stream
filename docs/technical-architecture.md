@@ -5,7 +5,7 @@
 - **Backend API:** FastAPI + SQLAlchemy + Alembic + Pydantic
 - **Database:** PostgreSQL 16
 - **Cache/queue:** Redis 7
-- **Streaming engine:** Python service controlling GStreamer pipelines via `gst-launch-1.0`
+- **Streaming engine:** Python service controlling FFmpeg pipelines
 - **Reverse proxy:** Nginx
 - **TLS:** Certbot webroot flow
 - **Runtime:** Docker Compose
@@ -27,7 +27,7 @@ Backend API
 Streaming Engine
   -> PostgreSQL (state lookup)
   -> Redis (heartbeat/cache)
-  -> GStreamer subprocesses
+  -> FFmpeg subprocesses
   -> Shared volumes for HLS output, logs, logos
 ```
 
@@ -46,7 +46,7 @@ Streaming Engine
 - Aggregated status/log read APIs.
 
 ### 3.3 Streaming Engine
-- Build deterministic GStreamer pipeline specs from DB config.
+- Build deterministic FFmpeg pipeline specs from DB config.
 - Own process lifecycle.
 - Monitor child processes.
 - Write logs to shared volume.
@@ -78,21 +78,20 @@ Streaming Engine
 
 ## 5. Pipeline Strategy
 ### 5.1 Inputs
-- **RTMP input:** `rtmpsrc location=... ! flvdemux ! decodebin`
-- **SRT input:** `srtsrc uri=... ! tsdemux ! decodebin`
-- **HLS input:** `souphttpsrc location=... ! hlsdemux ! decodebin`
+- **RTMP input:** FFmpeg RTMP ingest from configured source URL.
+- **SRT input:** FFmpeg SRT ingest from configured source URL.
+- **HLS input:** FFmpeg HLS ingest with reconnect options.
 
 ### 5.2 Common processing
 - Normalize timestamps.
-- Decode to raw video/audio.
-- Apply logo overlay using `gdkpixbufoverlay` when enabled.
-- Split with `tee` for outputs.
+- Decode and normalize video/audio.
+- Apply logo overlay using FFmpeg filter graphs when enabled.
+- Create one FFmpeg output branch per enabled output target.
 
 ### 5.3 ABR outputs
 Per enabled profile:
-- `videoscale` + `videoconvert`
-- `capsfilter` for resolution/framerate
-- `x264enc` for H.264 output
+- FFmpeg scale filter for resolution.
+- `libx264` for H.264 output.
 - `voaacenc` for AAC audio
 - `mpegtsmux` or fragmented MP4/HLS segmenter path
 - `hlssink2` per variant playlist
@@ -154,6 +153,6 @@ Master playlist generation is handled by the engine after pipeline launch by wri
 - Smoke: `docker compose config`, service health endpoints.
 
 ## 12. Known Constraints
-- GStreamer plugin availability varies by distro; image pins Debian packages.
-- HLS ingest support depends on `souphttpsrc` and `hlsdemux` plugins.
+- FFmpeg codec/protocol support depends on the Debian FFmpeg package in the engine image.
+- HLS ingest support uses FFmpeg reconnect options for source resiliency.
 - RTMP/SRT output behavior should be validated with live test sources during deployment.

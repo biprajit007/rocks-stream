@@ -7,7 +7,20 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
 from app.deps import get_current_user, get_db
-from app.models import AbrProfile, InputSource, LogoAsset, OutputTarget, Stream, StreamLogEntry, StreamRuntimeState, StreamStatus, User
+from app.models import (
+    AbrProfile,
+    InputSource,
+    LogoAsset,
+    OutputTarget,
+    Stream,
+    StreamJob,
+    StreamJobAction,
+    StreamJobStatus,
+    StreamLogEntry,
+    StreamRuntimeState,
+    StreamStatus,
+    User,
+)
 from app.schemas import (
     AbrProfileCreate,
     AbrProfileOut,
@@ -22,6 +35,7 @@ from app.schemas import (
     OutputTargetUpdate,
     PlaybackUrls,
     RuntimeStateOut,
+    StreamJobOut,
     StreamCreate,
     StreamOut,
     StreamUpdate,
@@ -280,10 +294,35 @@ def get_logs(stream_id: int, db: Session = Depends(get_db), _: User = Depends(ge
     return db.query(StreamLogEntry).filter(StreamLogEntry.stream_id == stream_id).order_by(StreamLogEntry.created_at.desc()).limit(200).all()
 
 
+@router.get("/{stream_id}/jobs", response_model=list[StreamJobOut])
+def get_jobs(stream_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    _get_stream_or_404(db, stream_id)
+    return db.query(StreamJob).filter(StreamJob.stream_id == stream_id).order_by(StreamJob.created_at.desc()).limit(100).all()
+
+
 async def _engine_action(stream_id: int, action: str, db: Session) -> EngineCommandResponse:
     stream = _get_stream_or_404(db, stream_id)
     payload = {"stream_id": stream_id, "action": action}
-    result = await post_engine(f"/engine/streams/{stream_id}/{action}", payload)
+    job = StreamJob(
+        stream_id=stream_id,
+        action=StreamJobAction(action),
+        status=StreamJobStatus.running,
+        engine="ffmpeg",
+        request_payload=payload,
+        started_at=datetime.utcnow(),
+    )
+    db.add(job)
+    db.flush()
+    try:
+        result = await post_engine(f"/engine/streams/{stream_id}/{action}", payload)
+    except Exception as exc:
+        job.status = StreamJobStatus.failed
+        job.error_message = str(exc)
+        job.finished_at = datetime.utcnow()
+        db.add(StreamLogEntry(stream_id=stream_id, level="error", message=f"Engine action {action} failed: {exc}"))
+        db.commit()
+        raise
+
     runtime = stream.runtime_state
     if runtime:
         runtime.engine_status = result.get("engine_status", runtime.engine_status)
@@ -294,6 +333,10 @@ async def _engine_action(stream_id: int, action: str, db: Session) -> EngineComm
         runtime.details = result.get("details", {})
         runtime.last_heartbeat_at = datetime.utcnow()
     stream.status = StreamStatus(result.get("stream_status", stream.status.value))
+    job.status = StreamJobStatus.completed
+    job.process_id = result.get("process_id")
+    job.result_payload = result
+    job.finished_at = datetime.utcnow()
     db.add(StreamLogEntry(stream_id=stream_id, level="info", message=f"Engine action {action} executed"))
     db.commit()
     return EngineCommandResponse(ok=True, message=result.get("message", action), runtime=runtime)

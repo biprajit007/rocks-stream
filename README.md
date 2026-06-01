@@ -1,13 +1,13 @@
 # Rocks Stream
 
-Rocks Stream is a Docker Compose based live streaming control plane inspired by Nimble Streamer. It uses **GStreamer** for ingest, transcoding, ABR ladder generation, HLS packaging, logo overlay, and output publishing.
+Rocks Stream is a Docker Compose based live streaming control plane inspired by Nimble Streamer. It uses **FFmpeg** for ingest, transcoding, ABR ladder generation, HLS packaging, logo overlay, and output publishing.
 
 ## Stack
 - Frontend: Next.js
 - Backend: FastAPI + SQLAlchemy + Alembic
 - Database: PostgreSQL
 - Cache: Redis
-- Streaming engine: Python service that manages `gst-launch-1.0` pipelines
+- Streaming engine: Python service that manages FFmpeg pipelines
 - Proxy/edge: Nginx RTMP + HTTP + HLS static serving
 - TLS: static valid certificate files mounted into nginx
 
@@ -15,7 +15,7 @@ Rocks Stream is a Docker Compose based live streaming control plane inspired by 
 ```text
 apps/backend              FastAPI API, auth, models, migrations
 apps/frontend             Next.js admin portal
-services/streaming-engine GStreamer pipeline manager
+services/streaming-engine FFmpeg pipeline manager
 infra/nginx               Nginx RTMP + HTTP config
 scripts                   Deployment and DNS helpers
 docs                      PRD + architecture
@@ -30,7 +30,7 @@ samples                   Sample stream payloads
 - HLS preview player via hls.js
 - Per-stream ABR toggle with default ladder: 1080p, 720p, 360p, 280p, 144p
 - Logo upload and coordinate/corner positioning
-- GStreamer pipeline manager with start/stop/restart endpoints
+- FFmpeg pipeline manager with start/stop/restart endpoints
 - Health checks for all services
 
 ## Quick start (local)
@@ -151,11 +151,11 @@ curl http://localhost:8000/health
 curl http://localhost:8081/health
 ```
 
-## Notes on GStreamer
-- The streaming engine uses `gst-launch-1.0` and Debian GStreamer packages.
-- Overlay is applied with `gdkpixbufoverlay`.
+## Notes on FFmpeg
+- The streaming engine uses FFmpeg subprocesses and Debian FFmpeg packages.
+- Overlay is applied with FFmpeg filter graphs.
 - HLS output is written to a shared volume served by Nginx.
-- ABR master playlist is written by the engine after profile pipelines are generated.
+- ABR master playlist is written by the engine after profile outputs are generated.
 
 ## What to validate on the server
 - RTMP ingress/output on port `1935`

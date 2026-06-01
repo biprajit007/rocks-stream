@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     public_domain: str = "keystream.rockstreamer.com"
     public_scheme: str = "https"
     redis_url: str = "redis://redis:6379/0"
+    pipeline_start_grace_seconds: float = 4.0
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

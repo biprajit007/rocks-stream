@@ -4,7 +4,7 @@ import AppShell from '../components/app-shell';
 
 export const metadata = {
   title: 'Rockstream Transcode Portal',
-  description: 'Transcode and streaming control portal powered by GStreamer',
+  description: 'Transcode and streaming control portal powered by FFmpeg',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

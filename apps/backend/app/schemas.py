@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import AliasChoices, BaseModel, EmailStr, Field
 
-from app.models import LogoPositionMode, OutputType, Protocol, StreamStatus
+from app.models import LogoPositionMode, OutputType, Protocol, StreamJobAction, StreamJobStatus, StreamStatus
 
 
 class TokenResponse(BaseModel):
@@ -145,12 +145,20 @@ class StreamUpdate(BaseModel):
     logo_height: int | None = None
 
 
+class OutputPlaybackUrl(BaseModel):
+    output_id: int
+    output_type: OutputType
+    url: str
+    label: str
+
+
 class PlaybackUrls(BaseModel):
     hls: str | None = None
     master_hls: str | None = None
     main_hls: str | None = None
     rtmp: str | None = None
     srt: str | None = None
+    outputs: list[OutputPlaybackUrl] = Field(default_factory=list)
 
 
 class RuntimeStateOut(BaseModel):
@@ -171,6 +179,24 @@ class LogEntryOut(BaseModel):
     level: str
     message: str
     created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class StreamJobOut(BaseModel):
+    id: int
+    stream_id: int
+    action: StreamJobAction
+    status: StreamJobStatus
+    engine: str
+    worker_id: str | None = None
+    process_id: int | None = None
+    request_payload: dict[str, Any] = Field(default_factory=dict)
+    result_payload: dict[str, Any] = Field(default_factory=dict)
+    error_message: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
