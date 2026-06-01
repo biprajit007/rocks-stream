@@ -293,8 +293,43 @@ button.danger { background: var(--danger); color: white; }
   padding: 12px;
 }
 .sequence-card,
-.inspector-card,
-.create-stream-card { position: relative; overflow: hidden; }
+.inspector-card { position: relative; overflow: hidden; }
+.create-stream-card { position: relative; }
+.create-stream-card.modal-card {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.create-stream-card details {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 96%, white 4%), var(--panel-soft));
+}
+.create-stream-card summary {
+  cursor: pointer;
+  list-style-position: outside;
+  padding: 4px 2px;
+}
+#live-abr {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+#live-abr label {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+#live-abr span {
+  min-width: 0;
+}
+#live-abr input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
 .sequence-steps { display: grid; gap: 12px; margin-top: 14px; }
 .sequence-step {
   display: grid;
@@ -371,4 +406,19 @@ button.danger { background: var(--danger); color: white; }
   .interactive-table { min-width: 820px; }
   .table-actions { flex-wrap: wrap; }
   .theme-toggle { min-width: auto; }
+  .modal-backdrop { padding: 10px; }
+  .modal-card {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+    border-radius: 14px;
+  }
+  .create-stream-card .grid-2 {
+    grid-template-columns: 1fr;
+  }
+  .create-stream-actions {
+    margin-left: -16px;
+    margin-right: -16px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
 }
